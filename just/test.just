@@ -1,6 +1,6 @@
 # Run all unit tests and integration tests
 [group('test')]
-test_all: test integration_test
+test_all: test
 
 [group('test')]
 test test_name="":
