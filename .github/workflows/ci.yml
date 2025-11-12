@@ -1,0 +1,63 @@
+name: build_and_test
+
+env:
+  RUST_VERSION: 1.91.1
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-1
+
+      - name: Install Just command runner
+        uses: extractions/setup-just@v3
+
+      - name: install ic-wasm
+        run: |
+          wget https://github.com/dfinity/ic-wasm/releases/download/0.9.8/ic-wasm-linux64 -O /usr/local/bin/ic-wasm
+          chmod +x /usr/local/bin/ic-wasm
+
+      - name: install candid-extractor
+        run: |
+          wget https://github.com/dfinity/candid-extractor/releases/download/0.1.6/candid-extractor-x86_64-unknown-linux-gnu.tar.gz -O /tmp/candid-extractor-x86_64-unknown-linux-gnu.tar.gz
+          tar -xvf /tmp/candid-extractor-x86_64-unknown-linux-gnu.tar.gz -C /usr/local/bin
+          chmod +x /usr/local/bin/candid-extractor
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: $RUST_VERSION
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - name: check rust code style
+        run: |
+          just check_code
+
+      - name: test
+        run: |
+          just fetch_all_canisters
+          just test_all

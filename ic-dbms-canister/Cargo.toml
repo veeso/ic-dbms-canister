@@ -1,0 +1,27 @@
+[package]
+name = "ic-dbms-canister"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+repository = { workspace = true }
+documentation = "https://docs.rs/ic-dbms-canister/"
+description = "A framework to build Database canisters on the Internet Computer using DBMS, by just providing the schema."
+include = [
+  "examples/**/*",
+  "src/**/*",
+  "../LICENSE",
+  "../README.md",
+  "../CHANGELOG.md",
+  "../assets/images/cargo/logo-128.png",
+]
+readme = "../README.md"
+
+[dependencies]
+candid = { workspace = true }
+ic-cdk = { workspace = true }
+ic-cdk-macros = { workspace = true }
+thiserror = { workspace = true }
