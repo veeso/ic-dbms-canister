@@ -17,3 +17,5 @@
 pub mod data_types;
 pub mod memory;
 pub mod query;
+pub mod table;
+pub mod utils;

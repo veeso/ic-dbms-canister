@@ -11,6 +11,9 @@ pub trait MemoryProvider {
     /// Gets the current size of the memory in bytes.
     fn size(&self) -> u64;
 
+    /// Gets the amount of pages currently allocated.
+    fn pages(&self) -> u64;
+
     /// Attempts to grow the memory by `new_pages` (added pages).
     ///
     /// Returns an error if it wasn't possible. Otherwise, returns the previous size that was reserved.
@@ -43,7 +46,11 @@ impl MemoryProvider for IcMemoryProvider {
     }
 
     fn size(&self) -> u64 {
-        ic_cdk::stable::stable_size() * Self::PAGE_SIZE
+        self.pages() * Self::PAGE_SIZE
+    }
+
+    fn pages(&self) -> u64 {
+        ic_cdk::stable::stable_size()
     }
 
     fn read(&self, offset: u64, buf: &mut [u8]) -> MemoryResult<()> {
@@ -86,6 +93,10 @@ impl MemoryProvider for HeapMemoryProvider {
 
     fn size(&self) -> u64 {
         self.memory.len() as u64
+    }
+
+    fn pages(&self) -> u64 {
+        self.size() / Self::PAGE_SIZE
     }
 
     fn read(&self, offset: u64, buf: &mut [u8]) -> MemoryResult<()> {
@@ -157,5 +168,17 @@ mod tests {
         let result = provider.write(HeapMemoryProvider::PAGE_SIZE - 3, &data_to_write);
         assert!(result.is_err());
         assert!(matches!(result.err().unwrap(), MemoryError::OutOfBounds));
+    }
+
+    #[test]
+    fn test_should_get_amount_of_pages_heap_memory() {
+        let mut provider = HeapMemoryProvider::default();
+        assert_eq!(provider.pages(), 0);
+
+        provider.grow(3).unwrap(); // grow by 3 pages
+        assert_eq!(provider.pages(), 3);
+
+        provider.grow(2).unwrap(); // grow by 2 more pages
+        assert_eq!(provider.pages(), 5);
     }
 }
