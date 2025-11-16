@@ -6,6 +6,7 @@ mod encode;
 mod error;
 mod provider;
 mod schema_registry;
+mod table_registry;
 
 use std::cell::RefCell;
 
@@ -15,6 +16,7 @@ pub use self::encode::{DataSize, Encode};
 pub use self::error::MemoryError;
 use self::provider::MemoryProvider;
 pub use self::schema_registry::{SCHEMA_REGISTRY, SchemaRegistry, TableRegistryPage};
+pub use self::table_registry::TableRegistry;
 
 // instantiate a static memory manager with the stable memory provider
 thread_local! {
@@ -73,6 +75,11 @@ where
         }
 
         manager
+    }
+
+    /// Returns the size of a memory page.
+    pub const fn page_size(&self) -> u64 {
+        P::PAGE_SIZE
     }
 
     /// Returns the ACL page number.
@@ -195,6 +202,14 @@ mod tests {
     }
 
     #[test]
+    fn test_should_get_memory_page_size() {
+        MEMORY_MANAGER.with_borrow(|manager| {
+            let page_size = manager.page_size();
+            assert_eq!(page_size, HeapMemoryProvider::PAGE_SIZE);
+        });
+    }
+
+    #[test]
     fn test_should_write_and_read_fixed_data_size() {
         // write to ACL page
         MEMORY_MANAGER.with_borrow_mut(|manager| {
@@ -272,7 +287,7 @@ mod tests {
         const SIZE: DataSize = DataSize::Fixed(6);
 
         fn encode(&'_ self) -> Cow<'_, [u8]> {
-            let mut buf = vec![0u8; 6];
+            let mut buf = vec![0u8; self.size()];
             buf[0..2].copy_from_slice(&self.a.to_le_bytes());
             buf[2..6].copy_from_slice(&self.b.to_le_bytes());
             Cow::Owned(buf)
@@ -285,6 +300,10 @@ mod tests {
             let a = u16::from_le_bytes([data[0], data[1]]);
             let b = u32::from_le_bytes([data[2], data[3], data[4], data[5]]);
             Ok(FixedSizeData { a, b })
+        }
+
+        fn size(&self) -> usize {
+            6
         }
     }
 
@@ -314,6 +333,10 @@ mod tests {
             let name_len = u16::from_le_bytes([data[2], data[3]]) as usize;
             let name = String::from_utf8(data[4..4 + name_len].to_vec())?;
             Ok(VariableSizeData { age, name })
+        }
+
+        fn size(&self) -> usize {
+            4 + self.name.len()
         }
     }
 }

@@ -73,9 +73,18 @@ impl AccessControlList {
 impl Encode for AccessControlList {
     const SIZE: DataSize = DataSize::Variable;
 
+    fn size(&self) -> usize {
+        // 4 bytes for len + sum of each principal's length (1 byte for length + bytes)
+        4 + self
+            .allowed
+            .iter()
+            .map(|p| 1 + p.as_slice().len())
+            .sum::<usize>()
+    }
+
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         // write the number of principals as u32 followed by each principal's bytes
-        let mut bytes = Vec::new();
+        let mut bytes = Vec::with_capacity(self.size());
         let len = self.allowed.len() as u32;
         bytes.extend_from_slice(&len.to_le_bytes());
         for principal in &self.allowed {

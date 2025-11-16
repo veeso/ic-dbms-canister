@@ -13,6 +13,9 @@ pub trait Encode {
     fn decode(data: Cow<[u8]>) -> MemoryResult<Self>
     where
         Self: Sized;
+
+    /// Returns the size in bytes of the encoded data type.
+    fn size(&self) -> usize;
 }
 
 /// Represents the size of data types used in the DBMS canister.
@@ -22,4 +25,14 @@ pub enum DataSize {
     Fixed(usize),
     /// A variable size.
     Variable,
+}
+
+impl DataSize {
+    /// Returns the size in bytes if the data size is fixed.
+    pub fn get_fixed_size(&self) -> Option<usize> {
+        match self {
+            DataSize::Fixed(size) => Some(*size),
+            DataSize::Variable => None,
+        }
+    }
 }

@@ -64,9 +64,14 @@ impl SchemaRegistry {
 impl Encode for SchemaRegistry {
     const SIZE: DataSize = DataSize::Variable;
 
+    fn size(&self) -> usize {
+        // 8 bytes for len + (8 + (4 * 2)) bytes for each entry
+        8 + (self.tables.len() * (4 * 2 + 8))
+    }
+
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         // prepare buffer; size is 8 bytes for len + (8 + (4 * 2)) bytes for each entry
-        let mut buffer = Vec::with_capacity(8 + (self.tables.len() * (4 * 2 + 8)));
+        let mut buffer = Vec::with_capacity(self.size());
         // write 8 bytes len of map
         buffer.extend_from_slice(&(self.tables.len() as u64).to_le_bytes());
         // write each entry

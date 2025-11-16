@@ -5,6 +5,9 @@ use thiserror::Error;
 /// An enum representing possible memory-related errors.
 #[derive(Debug, Error)]
 pub enum MemoryError {
+    /// Error when the data to be written is too large for the page.
+    #[error("Data too large for page (page size: {page_size}, requested: {requested})")]
+    DataTooLarge { page_size: u64, requested: u64 },
     /// Error when failing to decode data from bytes.
     #[error("Failed to decode data from bytes: {0}")]
     DecodeError(#[from] DecodeError),
