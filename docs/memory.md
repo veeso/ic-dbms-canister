@@ -1,6 +1,7 @@
 # Memory Management
 
 - [Memory Management](#memory-management)
+  - [How Internet Computer Memory Works](#how-internet-computer-memory-works)
   - [Memory Model](#memory-model)
   - [Memory Provider](#memory-provider)
   - [Memory Manager](#memory-manager)
@@ -13,6 +14,12 @@
     - [Index Registry](#index-registry)
 
 This document provides the technical details of memory management in ic-dbms-canister, also known as Layer 0 of ic-dbms.
+
+## How Internet Computer Memory Works
+
+On the Internet Computer, canisters have access to a stable memory that persists across upgrades. This stable memory is divided into pages, each of which is 64 KiB in size.
+
+When a canister is first created, it starts with a small amount of stable memory, and it can grow this memory as needed by allocating additional pages. The canister can read from and write to this stable memory using specific APIs provided by the Internet Computer SDK.
 
 ## Memory Model
 
