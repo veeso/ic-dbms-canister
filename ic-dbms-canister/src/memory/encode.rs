@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::memory::MemoryResult;
+use crate::memory::{MSize, MemoryResult};
 
 /// This trait defines the encoding and decoding behaviour for data types used in the DBMS canister.
 pub trait Encode {
@@ -15,21 +15,21 @@ pub trait Encode {
         Self: Sized;
 
     /// Returns the size in bytes of the encoded data type.
-    fn size(&self) -> usize;
+    fn size(&self) -> MSize;
 }
 
 /// Represents the size of data types used in the DBMS canister.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataSize {
     /// A fixed size in bytes.
-    Fixed(usize),
+    Fixed(MSize),
     /// A variable size.
     Variable,
 }
 
 impl DataSize {
     /// Returns the size in bytes if the data size is fixed.
-    pub fn get_fixed_size(&self) -> Option<usize> {
+    pub fn get_fixed_size(&self) -> Option<MSize> {
         match self {
             DataSize::Fixed(size) => Some(*size),
             DataSize::Variable => None,

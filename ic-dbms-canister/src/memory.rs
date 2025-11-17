@@ -35,6 +35,8 @@ thread_local! {
 pub type Page = u32;
 /// Type identifying an offset within a memory page.
 pub type PageOffset = u16;
+/// Size type for memory operations.
+pub type MSize = u16;
 
 /// The result type for memory operations.
 pub type MemoryResult<T> = Result<T, MemoryError>;
@@ -124,7 +126,7 @@ where
         let mut buf = vec![
             0u8;
             match D::SIZE {
-                DataSize::Fixed(size) => size,
+                DataSize::Fixed(size) => size as usize,
                 DataSize::Variable => (P::PAGE_SIZE as usize) - (offset as usize),
             }
         ];
@@ -287,7 +289,7 @@ mod tests {
         const SIZE: DataSize = DataSize::Fixed(6);
 
         fn encode(&'_ self) -> Cow<'_, [u8]> {
-            let mut buf = vec![0u8; self.size()];
+            let mut buf = vec![0u8; self.size() as usize];
             buf[0..2].copy_from_slice(&self.a.to_le_bytes());
             buf[2..6].copy_from_slice(&self.b.to_le_bytes());
             Cow::Owned(buf)
@@ -302,7 +304,7 @@ mod tests {
             Ok(FixedSizeData { a, b })
         }
 
-        fn size(&self) -> usize {
+        fn size(&self) -> MSize {
             6
         }
     }
@@ -335,8 +337,8 @@ mod tests {
             Ok(VariableSizeData { age, name })
         }
 
-        fn size(&self) -> usize {
-            4 + self.name.len()
+        fn size(&self) -> MSize {
+            4 + self.name.len() as MSize
         }
     }
 }

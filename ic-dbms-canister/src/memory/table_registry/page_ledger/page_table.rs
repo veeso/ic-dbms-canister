@@ -1,4 +1,4 @@
-use crate::memory::{DataSize, Encode, Page};
+use crate::memory::{DataSize, Encode, MSize, Page};
 
 /// The list of pages in the page ledger
 #[derive(Debug, Default)]
@@ -16,10 +16,10 @@ pub struct PageRecord {
 impl Encode for PageTable {
     const SIZE: DataSize = DataSize::Variable;
 
-    fn size(&self) -> usize {
-        // 4 bytes for len + (4 bytes per page)
-        std::mem::size_of::<u32>()
-            + (self.pages.len()
+    fn size(&self) -> MSize {
+        // 4 bytes for len + (12 bytes per page)
+        std::mem::size_of::<u32>() as MSize
+            + (self.pages.len() as MSize
                 * PageRecord::SIZE
                     .get_fixed_size()
                     .expect("Should be fixed size"))
@@ -28,7 +28,7 @@ impl Encode for PageTable {
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         // write length of pages
         let size = self.pages.len() as u32;
-        let mut encoded = Vec::with_capacity(self.size());
+        let mut encoded = Vec::with_capacity(self.size() as usize);
         encoded.extend_from_slice(&size.to_le_bytes());
         for page in &self.pages {
             encoded.extend_from_slice(&page.encode());
@@ -48,11 +48,11 @@ impl Encode for PageTable {
             let start = std::mem::size_of::<u32>()
                 + (i * PageRecord::SIZE
                     .get_fixed_size()
-                    .expect("Should be fixed size"));
+                    .expect("Should be fixed size") as usize);
             let end = start
                 + PageRecord::SIZE
                     .get_fixed_size()
-                    .expect("Should be fixed size");
+                    .expect("Should be fixed size") as usize;
             let page_bytes = &data[start..end];
             let page = PageRecord::decode(std::borrow::Cow::Borrowed(page_bytes))?;
             pages.push(page);
@@ -63,14 +63,16 @@ impl Encode for PageTable {
 
 impl Encode for PageRecord {
     const SIZE: DataSize =
-        DataSize::Fixed(std::mem::size_of::<Page>() + std::mem::size_of::<u64>());
+        DataSize::Fixed(std::mem::size_of::<Page>() as MSize + std::mem::size_of::<u64>() as MSize);
 
-    fn size(&self) -> usize {
-        std::mem::size_of::<Page>() + std::mem::size_of::<u64>()
+    fn size(&self) -> MSize {
+        Self::SIZE
+            .get_fixed_size()
+            .expect("PageRecord size should be fixed")
     }
 
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
-        let mut encoded = Vec::with_capacity(self.size());
+        let mut encoded = Vec::with_capacity(self.size() as usize);
         encoded.extend_from_slice(&self.page.to_le_bytes());
         encoded.extend_from_slice(&self.free.to_le_bytes());
         std::borrow::Cow::Owned(encoded)

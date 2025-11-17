@@ -2,7 +2,7 @@ mod deleted_records;
 
 pub use self::deleted_records::DeletedRecord;
 use self::deleted_records::DeletedRecordsTable;
-use crate::memory::{Encode, MEMORY_MANAGER, MemoryResult, Page};
+use crate::memory::{Encode, MEMORY_MANAGER, MSize, MemoryResult, Page, PageOffset};
 
 /// The deleted records ledger keeps track of deleted records in the [`DeletedRecordsTable`] registry.
 ///
@@ -41,8 +41,8 @@ impl DeletedRecordsLedger {
     pub fn insert_deleted_record(
         &mut self,
         page: Page,
-        offset: usize,
-        size: usize,
+        offset: PageOffset,
+        size: MSize,
     ) -> MemoryResult<()> {
         self.table.insert_deleted_record(page, offset, size);
         self.write()
@@ -56,7 +56,7 @@ impl DeletedRecordsLedger {
     where
         E: Encode,
     {
-        let required_size = record.size() as u64;
+        let required_size = record.size();
         self.table.find(|r| r.size >= required_size)
     }
 
@@ -69,7 +69,7 @@ impl DeletedRecordsLedger {
     where
         E: Encode,
     {
-        self.table.remove(page, offset, size, record.size() as u64);
+        self.table.remove(page, offset, size, record.size());
         self.write()
     }
 
@@ -83,7 +83,7 @@ impl DeletedRecordsLedger {
 mod tests {
 
     use super::*;
-    use crate::memory::DataSize;
+    use crate::memory::{DataSize, MSize};
 
     #[test]
     fn test_should_load_deleted_records_ledger() {
@@ -241,7 +241,7 @@ mod tests {
     impl Encode for TestRecord {
         const SIZE: DataSize = DataSize::Fixed(100);
 
-        fn size(&self) -> usize {
+        fn size(&self) -> MSize {
             100
         }
 

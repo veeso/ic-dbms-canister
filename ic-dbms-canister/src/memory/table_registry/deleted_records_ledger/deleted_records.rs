@@ -1,4 +1,4 @@
-use crate::memory::{DataSize, Encode, MemoryResult, Page};
+use crate::memory::{DataSize, Encode, MSize, MemoryResult, Page, PageOffset};
 
 /// [`Encode`]able representation of a table that keeps track of [`DeletedRecord`]s.
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -12,19 +12,15 @@ pub struct DeletedRecord {
     /// The page where the deleted record was located.
     pub page: Page,
     /// The offset within the page where the deleted record was located.
-    pub offset: u64,
+    pub offset: PageOffset,
     /// The size of the deleted record.
-    pub size: u64,
+    pub size: MSize,
 }
 
 impl DeletedRecordsTable {
     /// Inserts a new [`DeletedRecord`] into the table.
-    pub fn insert_deleted_record(&mut self, page: Page, offset: usize, size: usize) {
-        let record = DeletedRecord {
-            page,
-            offset: offset as u64,
-            size: size as u64,
-        };
+    pub fn insert_deleted_record(&mut self, page: Page, offset: PageOffset, size: MSize) {
+        let record = DeletedRecord { page, offset, size };
         self.records.push(record);
     }
 
@@ -40,7 +36,7 @@ impl DeletedRecordsTable {
     ///
     /// If `used_size` is less than `size`, the old record is removed, but a new record is added
     /// for the remaining free space.
-    pub fn remove(&mut self, page: Page, offset: u64, size: u64, used_size: u64) {
+    pub fn remove(&mut self, page: Page, offset: PageOffset, size: MSize, used_size: MSize) {
         if let Some(pos) = self
             .records
             .iter()
@@ -66,13 +62,13 @@ impl DeletedRecordsTable {
 impl Encode for DeletedRecordsTable {
     const SIZE: DataSize = DataSize::Variable;
 
-    fn size(&self) -> usize {
+    fn size(&self) -> MSize {
         // 4 bytes for the length + size of each record.
-        4 + self.records.iter().map(|r| r.size()).sum::<usize>()
+        4 + self.records.iter().map(|r| r.size()).sum::<MSize>()
     }
 
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
-        let mut buffer = Vec::with_capacity(self.size());
+        let mut buffer = Vec::with_capacity(self.size() as usize);
 
         // Encode the length of the records vector.
         let length = self.records.len() as u32;
@@ -98,7 +94,9 @@ impl Encode for DeletedRecordsTable {
 
         let mut offset = 4;
         for _ in 0..length {
-            let record_data = data[offset..offset + record_size].to_vec().into();
+            let record_data = data[offset as usize..(offset + record_size) as usize]
+                .to_vec()
+                .into();
             let record = DeletedRecord::decode(record_data)?;
             records.push(record);
             offset += record_size;
@@ -109,14 +107,14 @@ impl Encode for DeletedRecordsTable {
 }
 
 impl Encode for DeletedRecord {
-    const SIZE: DataSize = DataSize::Fixed(20); // page (4) + offset (8) + size (8)
+    const SIZE: DataSize = DataSize::Fixed(8); // page (4) + offset (2) + size (2)
 
-    fn size(&self) -> usize {
+    fn size(&self) -> MSize {
         Self::SIZE.get_fixed_size().expect("Should be fixed")
     }
 
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
-        let mut buffer = Vec::with_capacity(self.size());
+        let mut buffer = Vec::with_capacity(self.size() as usize);
 
         buffer.extend_from_slice(&self.page.to_le_bytes());
         buffer.extend_from_slice(&self.offset.to_le_bytes());
@@ -129,8 +127,8 @@ impl Encode for DeletedRecord {
         Self: Sized,
     {
         let page = Page::from_le_bytes(data[0..4].try_into()?);
-        let offset = u64::from_le_bytes(data[4..12].try_into()?);
-        let size = u64::from_le_bytes(data[12..20].try_into()?);
+        let offset = PageOffset::from_le_bytes(data[4..6].try_into()?);
+        let size = MSize::from_le_bytes(data[6..8].try_into()?);
 
         Ok(DeletedRecord { page, offset, size })
     }
@@ -149,7 +147,7 @@ mod tests {
             size: 256,
         };
 
-        assert_eq!(original_record.size(), 20);
+        assert_eq!(original_record.size(), 8);
         let encoded = original_record.encode();
         let decoded = DeletedRecord::decode(encoded).expect("Decoding failed");
 

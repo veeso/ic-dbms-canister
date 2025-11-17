@@ -35,7 +35,7 @@ impl PageLedger {
         // check if record can fit in a page
         if required_size > page_size {
             return Err(crate::memory::error::MemoryError::DataTooLarge {
-                page_size,
+                page_size: page_size,
                 requested: required_size,
             });
         }
@@ -96,9 +96,9 @@ impl PageLedger {
 mod tests {
 
     use super::*;
-    use crate::memory::DataSize;
     use crate::memory::provider::{HeapMemoryProvider, MemoryProvider};
     use crate::memory::table_registry::page_ledger::page_table::PageRecord;
+    use crate::memory::{DataSize, MSize};
 
     #[test]
     fn test_should_store_pages_and_load_back() {
@@ -124,7 +124,7 @@ mod tests {
             },
             ledger_page: page,
         };
-        page_ledger.write().unwrap();
+        page_ledger.write().expect("failed to write page ledger");
         let loaded_ledger = PageLedger::load(page).expect("failed to load page ledger");
         assert_eq!(page_ledger.pages.pages, loaded_ledger.pages.pages);
     }
@@ -173,7 +173,7 @@ mod tests {
     impl Encode for TestRecord {
         const SIZE: DataSize = DataSize::Fixed(100);
 
-        fn size(&self) -> usize {
+        fn size(&self) -> MSize {
             100
         }
 
