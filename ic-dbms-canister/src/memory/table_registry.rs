@@ -5,7 +5,10 @@ use std::marker::PhantomData;
 
 use self::deleted_records_ledger::DeletedRecordsLedger;
 use self::page_ledger::PageLedger;
-use crate::memory::{Encode, MemoryResult, TableRegistryPage};
+use crate::memory::{Encode, MSize, MemoryResult, TableRegistryPage};
+
+/// Each record is prefixed with its length encoded in 2 bytes
+const RECORD_LEN_SIZE: MSize = 2;
 
 /// The table registry takes care of storing the records for each table,
 /// using the [`DeletedRecordsLedger`] and [`PageLedger`] to derive exactly where to read/write

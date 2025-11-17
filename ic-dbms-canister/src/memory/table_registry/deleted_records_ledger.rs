@@ -2,7 +2,8 @@ mod deleted_records;
 
 pub use self::deleted_records::DeletedRecord;
 use self::deleted_records::DeletedRecordsTable;
-use crate::memory::{Encode, MEMORY_MANAGER, MSize, MemoryResult, Page, PageOffset};
+use crate::memory::table_registry::RECORD_LEN_SIZE;
+use crate::memory::{Encode, MEMORY_MANAGER, MemoryResult, Page, PageOffset};
 
 /// The deleted records ledger keeps track of deleted records in the [`DeletedRecordsTable`] registry.
 ///
@@ -37,14 +38,20 @@ impl DeletedRecordsLedger {
 
     /// Inserts a new [`DeletedRecord`] into the ledger with the specified [`Page`], offset, and size.
     ///
+    /// The size is calculated based on the size of the record plus the length prefix.
+    ///
     /// The table is then written back to memory.
-    pub fn insert_deleted_record(
+    pub fn insert_deleted_record<E>(
         &mut self,
         page: Page,
         offset: PageOffset,
-        size: MSize,
-    ) -> MemoryResult<()> {
-        self.table.insert_deleted_record(page, offset, size);
+        record: &E,
+    ) -> MemoryResult<()>
+    where
+        E: Encode,
+    {
+        let memory_size = record.size() + RECORD_LEN_SIZE;
+        self.table.insert_deleted_record(page, offset, memory_size);
         self.write()
     }
 
@@ -69,7 +76,9 @@ impl DeletedRecordsLedger {
     where
         E: Encode,
     {
-        self.table.remove(page, offset, size, record.size());
+        let used_size = record.size() + RECORD_LEN_SIZE;
+
+        self.table.remove(page, offset, size, used_size);
         self.write()
     }
 
@@ -107,22 +116,24 @@ mod tests {
         let mut ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
 
+        let record = TestRecord { data: [0; 100] };
+
         ledger
-            .insert_deleted_record(4, 0, 128)
+            .insert_deleted_record(4, 0, &record)
             .expect("Failed to insert deleted record");
 
-        let record = ledger
+        let found_record = ledger
             .table
-            .find(|r| r.page == 4 && r.offset == 0 && r.size == 128);
-        assert!(record.is_some());
+            .find(|r| r.page == 4 && r.offset == 0 && r.size == record.size() + RECORD_LEN_SIZE);
+        assert!(found_record.is_some());
 
         // verify it's written (reload)
         let reloaded_ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
-        let record = reloaded_ledger
+        let found_record = reloaded_ledger
             .table
-            .find(|r| r.page == 4 && r.offset == 0 && r.size == 128);
-        assert!(record.is_some());
+            .find(|r| r.page == 4 && r.offset == 0 && r.size == record.size() + RECORD_LEN_SIZE);
+        assert!(found_record.is_some());
     }
 
     #[test]
@@ -134,8 +145,10 @@ mod tests {
         let mut ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
 
+        let record = TestRecord { data: [0; 100] };
+
         ledger
-            .insert_deleted_record(4, 0, 128)
+            .insert_deleted_record(4, 0, &record)
             .expect("Failed to insert deleted record");
 
         let record = TestRecord { data: [0; 100] };
@@ -145,7 +158,7 @@ mod tests {
             Some(DeletedRecord {
                 page: 4,
                 offset: 0,
-                size: 128
+                size: record.size() + RECORD_LEN_SIZE,
             })
         );
     }
@@ -159,11 +172,13 @@ mod tests {
         let mut ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
 
+        let record = TestRecord { data: [0; 100] };
+
         ledger
-            .insert_deleted_record(4, 0, 56)
+            .insert_deleted_record(4, 0, &record)
             .expect("Failed to insert deleted record");
 
-        let record = TestRecord { data: [0; 100] };
+        let record = BigTestRecord { data: [0; 200] };
         let reusable_space = ledger.find_reusable_record(&record);
         assert_eq!(reusable_space, None);
     }
@@ -177,11 +192,12 @@ mod tests {
         let mut ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
 
+        let record = TestRecord { data: [0; 100] };
+
         ledger
-            .insert_deleted_record(4, 0, 100)
+            .insert_deleted_record(4, 0, &record)
             .expect("Failed to insert deleted record");
 
-        let record = TestRecord { data: [0; 100] };
         let reusable_space = ledger
             .find_reusable_record(&record)
             .expect("should find reusable space");
@@ -193,7 +209,7 @@ mod tests {
         // should be empty
         let record = ledger
             .table
-            .find(|r| r.page == 4 && r.offset == 0 && r.size == 100);
+            .find(|r| r.page == 4 && r.offset == 0 && r.size == 100 + RECORD_LEN_SIZE);
         assert!(record.is_none());
 
         // reload
@@ -201,7 +217,7 @@ mod tests {
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
         let record = reloaded_ledger
             .table
-            .find(|r| r.page == 4 && r.offset == 0 && r.size == 100);
+            .find(|r| r.page == 4 && r.offset == 0 && r.size == 100 + RECORD_LEN_SIZE);
         assert!(record.is_none());
     }
 
@@ -213,23 +229,25 @@ mod tests {
         let mut ledger =
             DeletedRecordsLedger::load(page).expect("Failed to load DeletedRecordsLedger");
 
+        let big_record = BigTestRecord { data: [1; 200] };
+
         ledger
-            .insert_deleted_record(4, 0, 200)
+            .insert_deleted_record(4, 0, &big_record)
             .expect("Failed to insert deleted record");
 
-        let record = TestRecord { data: [0; 100] };
+        let small_record = TestRecord { data: [0; 100] };
         let reusable_space = ledger
-            .find_reusable_record(&record)
+            .find_reusable_record(&small_record)
             .expect("should find reusable space");
 
         ledger
-            .commit_reused_space(&record, reusable_space)
+            .commit_reused_space(&small_record, reusable_space)
             .expect("Failed to commit reused space");
 
         // should have a new record for the remaining space
         let record = ledger
             .table
-            .find(|r| r.page == 4 && r.offset == 100 && r.size == 100);
+            .find(|r| r.page == 4 && r.offset == 100 + RECORD_LEN_SIZE && r.size == 100);
         assert!(record.is_some());
     }
 
@@ -255,6 +273,32 @@ mod tests {
         {
             let mut record = TestRecord { data: [0; 100] };
             record.data.copy_from_slice(&data[0..100]);
+            Ok(record)
+        }
+    }
+
+    #[derive(Debug)]
+    struct BigTestRecord {
+        data: [u8; 200],
+    }
+
+    impl Encode for BigTestRecord {
+        const SIZE: DataSize = DataSize::Fixed(200);
+
+        fn size(&self) -> MSize {
+            200
+        }
+
+        fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
+            std::borrow::Cow::Borrowed(&self.data)
+        }
+
+        fn decode(data: std::borrow::Cow<[u8]>) -> crate::memory::MemoryResult<Self>
+        where
+            Self: Sized,
+        {
+            let mut record = BigTestRecord { data: [0; 200] };
+            record.data.copy_from_slice(&data[0..200]);
             Ok(record)
         }
     }
