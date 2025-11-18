@@ -1,6 +1,7 @@
 mod page_table;
 
 use self::page_table::PageTable;
+use crate::memory::table_registry::page_ledger::page_table::PageRecord;
 use crate::memory::{Encode, MEMORY_MANAGER, MemoryResult, Page, PageOffset};
 
 /// Takes care of storing the pages for each table
@@ -44,11 +45,10 @@ impl PageLedger {
         }
 
         // iter ledger pages to find a page with enough free space
-        let next_page = self
-            .pages
-            .pages
-            .iter()
-            .find(|page_record| page_record.free + required_size <= page_size);
+        let next_page = self.pages.pages.iter().find(|page_record| {
+            let taken = page_size.saturating_sub(page_record.free);
+            taken + required_size <= page_size
+        });
         // if page found, return it
         if let Some(page_record) = next_page {
             let offset = page_size.saturating_sub(page_record.free) as PageOffset;
@@ -88,6 +88,11 @@ impl PageLedger {
         }
 
         Err(crate::memory::error::MemoryError::OutOfBounds)
+    }
+
+    /// Returns the list of pages in the ledger.
+    pub fn pages(&self) -> &[PageRecord] {
+        &self.pages.pages
     }
 
     /// Write the page ledger to memory.

@@ -1,18 +1,20 @@
 mod free_segments_ledger;
 mod page_ledger;
 mod raw_record;
+mod table_reader;
 mod write_at;
 
 use std::marker::PhantomData;
 
 use self::free_segments_ledger::FreeSegmentsLedger;
 use self::page_ledger::PageLedger;
+pub use self::table_reader::TableReader;
 use self::write_at::WriteAt;
 use crate::memory::table_registry::raw_record::RawRecord;
 use crate::memory::{Encode, MEMORY_MANAGER, MSize, MemoryResult, TableRegistryPage};
 
-/// Each record is prefixed with its length encoded in 2 bytes
-const RECORD_LEN_SIZE: MSize = 2;
+/// Each record is prefixed with its length encoded in 2 bytes and a magic header byte.
+const RAW_RECORD_HEADER_SIZE: MSize = 3;
 
 /// The table registry takes care of storing the records for each table,
 /// using the [`FreeSegmentsLedger`] and [`PageLedger`] to derive exactly where to read/write.
@@ -57,7 +59,14 @@ where
             .with_borrow_mut(|mm| mm.write_at(write_at.page(), write_at.offset(), &raw_record))?;
 
         // commit post-write actions
-        self.commit_post_write(write_at, &raw_record)
+        self.post_write(write_at, &raw_record)
+    }
+
+    /// Creates a [`TableReader`] to read records from the table registry.
+    ///
+    /// Use [`TableReader::try_next`] to read records one by one.
+    pub fn read(&self) -> TableReader<'_, E> {
+        TableReader::new(&self.page_ledger)
     }
 
     /// Gets the position where to write a record of the given size.
@@ -74,7 +83,10 @@ where
     }
 
     /// Commits the post-write actions after writing a record at the given position.
-    fn commit_post_write(&mut self, write_at: WriteAt, record: &RawRecord<E>) -> MemoryResult<()> {
+    ///
+    /// - If the record was a [`WriteAt::ReusedSegment`], the free segment is marked as used.
+    /// - If the record was a [`WriteAt::End`], the page ledger is updated.
+    fn post_write(&mut self, write_at: WriteAt, record: &RawRecord<E>) -> MemoryResult<()> {
         match write_at {
             WriteAt::ReusedSegment(free_segment) => {
                 // mark segment as used
@@ -211,5 +223,30 @@ mod tests {
 
         // insert record
         assert!(registry.insert(record).is_ok());
+    }
+
+    #[test]
+    fn test_should_manage_to_insert_users_to_exceed_one_page() {
+        let page_ledger_page = MEMORY_MANAGER
+            .with_borrow_mut(|mm| mm.allocate_page())
+            .expect("failed to get page");
+        let free_segments_page = MEMORY_MANAGER
+            .with_borrow_mut(|mm| mm.allocate_page())
+            .expect("failed to get page");
+        let table_pages = TableRegistryPage {
+            pages_list_page: page_ledger_page,
+            free_segments_page,
+        };
+
+        let mut registry: TableRegistry<User> =
+            TableRegistry::load(table_pages).expect("failed to load");
+
+        for id in 0..4000 {
+            let record = User {
+                id,
+                name: format!("User {}", id),
+            };
+            registry.insert(record).expect("failed to insert record");
+        }
     }
 }

@@ -115,11 +115,6 @@ where
     where
         D: Encode,
     {
-        // page must be allocated
-        if self.last_page().is_none_or(|last_page| page > last_page) {
-            return Err(MemoryError::SegmentationFault);
-        }
-
         // read until end of the page (or fixed size)
         let mut buf = vec![
             0u8;
@@ -129,14 +124,7 @@ where
             }
         ];
 
-        // if page exists, the read must be within bounds
-        if offset as u64 + buf.len() as u64 > P::PAGE_SIZE {
-            return Err(MemoryError::SegmentationFault);
-        }
-
-        // get absolute offset
-        let absolute_offset = self.absolute_offset(page, offset);
-        self.provider.read(absolute_offset, &mut buf)?;
+        self.read_at_raw(page, offset, &mut buf)?;
 
         D::decode(std::borrow::Cow::Owned(buf))
     }
@@ -148,19 +136,57 @@ where
     {
         // page must be allocated
         if self.last_page().is_none_or(|last_page| page > last_page) {
-            return Err(MemoryError::SegmentationFault);
+            return Err(MemoryError::SegmentationFault {
+                page,
+                offset,
+                data_size: data.size(),
+                page_size: P::PAGE_SIZE,
+            });
         }
 
         let encoded = data.encode();
 
         // if page exists, the write must be within bounds
         if offset as u64 + encoded.len() as u64 > P::PAGE_SIZE {
-            return Err(MemoryError::SegmentationFault);
+            return Err(MemoryError::SegmentationFault {
+                page,
+                offset,
+                data_size: data.size(),
+                page_size: P::PAGE_SIZE,
+            });
         }
 
         // get absolute offset
         let absolute_offset = self.absolute_offset(page, offset);
         self.provider.write(absolute_offset, encoded.as_ref())
+    }
+
+    /// Reads raw bytes into the provided buffer at the specified page and offset.
+    pub fn read_at_raw(
+        &self,
+        page: Page,
+        offset: PageOffset,
+        buf: &mut [u8],
+    ) -> MemoryResult<usize> {
+        // page must be allocated
+        if self.last_page().is_none_or(|last_page| page > last_page) {
+            return Err(MemoryError::SegmentationFault {
+                page,
+                offset,
+                data_size: buf.len() as MSize,
+                page_size: P::PAGE_SIZE,
+            });
+        }
+
+        // read up to buffer length or end of page
+        let read_len = ((P::PAGE_SIZE - offset as u64) as usize).min(buf.len());
+
+        // get absolute offset
+        let absolute_offset = self.absolute_offset(page, offset);
+        self.provider
+            .read(absolute_offset, buf[..read_len].as_mut())?;
+
+        Ok(read_len)
     }
 
     /// Gets the last allocated page number.
@@ -242,26 +268,40 @@ mod tests {
     }
 
     #[test]
+    fn test_should_read_raw() {
+        // write to ACL page
+        MEMORY_MANAGER.with_borrow_mut(|manager| {
+            let data_to_write = vec![1u8, 2, 3, 4, 5];
+            manager
+                .provider
+                .write(manager.absolute_offset(ACL_PAGE, 20), &data_to_write)
+                .expect("Failed to write raw data to ACL page");
+
+            let mut buf = vec![0u8; 5];
+            manager
+                .read_at_raw(ACL_PAGE, 20, &mut buf)
+                .expect("Failed to read raw data from ACL page");
+
+            assert_eq!(buf, data_to_write);
+        });
+    }
+
+    #[test]
     fn test_should_fail_out_of_bounds_access() {
         MEMORY_MANAGER.with_borrow_mut(|manager| {
-            let result: MemoryResult<FixedSizeData> =
-                manager.read_at(ACL_PAGE, (HeapMemoryProvider::PAGE_SIZE - 5) as PageOffset);
-            assert!(matches!(result, Err(MemoryError::SegmentationFault)));
-
             let data_to_write = FixedSizeData { a: 1, b: 2 };
             let result = manager.write_at(
                 ACL_PAGE,
                 (HeapMemoryProvider::PAGE_SIZE - 3) as PageOffset,
                 &data_to_write,
             );
-            assert!(matches!(result, Err(MemoryError::SegmentationFault)));
+            assert!(matches!(result, Err(MemoryError::SegmentationFault { .. })));
 
             // try to access unallocated page
             let result: MemoryResult<FixedSizeData> = manager.read_at(10, 0);
-            assert!(matches!(result, Err(MemoryError::SegmentationFault)));
-
+            assert!(matches!(result, Err(MemoryError::SegmentationFault { .. })));
             let result = manager.write_at(10, 0, &data_to_write);
-            assert!(matches!(result, Err(MemoryError::SegmentationFault)));
+            assert!(matches!(result, Err(MemoryError::SegmentationFault { .. })));
         });
     }
 

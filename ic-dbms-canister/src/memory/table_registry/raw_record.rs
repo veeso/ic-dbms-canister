@@ -1,5 +1,8 @@
 use crate::memory::error::DecodeError;
+use crate::memory::table_registry::RAW_RECORD_HEADER_SIZE;
 use crate::memory::{Encode, MSize, MemoryError};
+
+pub const RAW_RECORD_HEADER_MAGIC_NUMBER: u8 = 0xFF;
 
 /// A raw record stored in memory, consisting of its length and data.
 pub struct RawRecord<E>
@@ -7,7 +10,7 @@ where
     E: Encode,
 {
     length: MSize,
-    data: E,
+    pub data: E,
 }
 
 impl<E> RawRecord<E>
@@ -28,11 +31,12 @@ where
     const SIZE: crate::memory::DataSize = crate::memory::DataSize::Variable;
 
     fn size(&self) -> MSize {
-        super::RECORD_LEN_SIZE + self.length // 2 bytes for length + data size
+        super::RAW_RECORD_HEADER_SIZE + self.length // 1 (start) + 2 bytes for length + data size
     }
 
     fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         let mut encoded = Vec::with_capacity(self.size() as usize);
+        encoded.push(RAW_RECORD_HEADER_MAGIC_NUMBER); // start byte
         encoded.extend_from_slice(&self.length.to_le_bytes());
         encoded.extend_from_slice(&self.data.encode());
         std::borrow::Cow::Owned(encoded)
@@ -42,14 +46,18 @@ where
     where
         Self: Sized,
     {
-        if data.len() < 2 {
+        if data.len() < 3 {
             return Err(MemoryError::DecodeError(DecodeError::TooShort));
         }
-        let length = u16::from_le_bytes([data[0], data[1]]) as MSize;
-        if data.len() < 2 + length as usize {
+        if data[0] != RAW_RECORD_HEADER_MAGIC_NUMBER {
+            return Err(MemoryError::DecodeError(DecodeError::BadRawRecordHeader));
+        }
+        let length = u16::from_le_bytes([data[1], data[2]]) as MSize;
+        if data.len() < (RAW_RECORD_HEADER_SIZE as usize) + length as usize {
             return Err(MemoryError::DecodeError(DecodeError::TooShort));
         }
-        let data_slice = &data[2..2 + length as usize];
+        let data_slice = &data[(RAW_RECORD_HEADER_SIZE as usize)
+            ..(RAW_RECORD_HEADER_SIZE as usize) + length as usize];
         let data_cow = std::borrow::Cow::Borrowed(data_slice);
         let data_decoded = E::decode(data_cow)?;
         Ok(Self {

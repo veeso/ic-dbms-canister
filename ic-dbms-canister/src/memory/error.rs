@@ -2,6 +2,8 @@ use std::array::TryFromSliceError;
 
 use thiserror::Error;
 
+use crate::memory::{MSize, Page, PageOffset};
+
 /// An enum representing possible memory-related errors.
 #[derive(Debug, Error)]
 pub enum MemoryError {
@@ -18,8 +20,15 @@ pub enum MemoryError {
     #[error("Stable memory access out of bounds")]
     OutOfBounds,
     /// Error when attempting to write out of the allocated page.
-    #[error("Tried to write out of the allocated page")]
-    SegmentationFault,
+    #[error(
+        "Tried to write out of the allocated page (page: {page}, offset: {offset}, data size: {data_size}, page size: {page_size})"
+    )]
+    SegmentationFault {
+        page: Page,
+        offset: PageOffset,
+        data_size: MSize,
+        page_size: u64,
+    },
     /// Error when failing to grow stable memory.
     #[error("Failed to grow stable memory: {0}")]
     StableMemoryError(#[from] ic_cdk::stable::StableMemoryError),
@@ -40,6 +49,9 @@ impl From<std::string::FromUtf8Error> for MemoryError {
 /// An enum representing possible decoding errors.
 #[derive(Debug, Error)]
 pub enum DecodeError {
+    /// Error when the raw record header is invalid.
+    #[error("Bad raw record header")]
+    BadRawRecordHeader,
     /// Error when failing to convert from slice.
     #[error("Failed to convert from slice: {0}")]
     TryFromSliceError(#[from] TryFromSliceError),
