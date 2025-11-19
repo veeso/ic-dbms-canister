@@ -16,7 +16,7 @@ pub use self::encode::{DataSize, Encode};
 pub use self::error::MemoryError;
 use self::provider::MemoryProvider;
 pub use self::schema_registry::{SCHEMA_REGISTRY, SchemaRegistry, TableRegistryPage};
-pub use self::table_registry::TableRegistry;
+pub use self::table_registry::{NextRecord, TableReader, TableRegistry};
 
 // instantiate a static memory manager with the stable memory provider
 thread_local! {

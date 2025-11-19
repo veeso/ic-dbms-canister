@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use self::free_segments_ledger::FreeSegmentsLedger;
 use self::page_ledger::PageLedger;
-pub use self::table_reader::TableReader;
+pub use self::table_reader::{NextRecord, TableReader};
 use self::write_at::WriteAt;
 use crate::memory::table_registry::raw_record::RawRecord;
 use crate::memory::{Encode, MEMORY_MANAGER, MSize, MemoryResult, TableRegistryPage};

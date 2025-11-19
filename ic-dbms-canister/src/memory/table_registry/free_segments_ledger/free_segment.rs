@@ -22,6 +22,7 @@ impl FreeSegmentsTable {
     pub fn insert_free_segment(&mut self, page: Page, offset: PageOffset, size: MSize) {
         let record = FreeSegment { page, offset, size };
         self.records.push(record);
+        todo!("Merge adjacent free segments for optimization");
     }
 
     /// Finds a free segment that matches the given predicate.

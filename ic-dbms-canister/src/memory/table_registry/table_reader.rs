@@ -17,11 +17,22 @@ struct Position {
 /// Represents the next record to read from memory.
 /// It also contains the new [`Position`] after reading the record.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-struct NextRecord {
+struct FoundRecord {
     page: Page,
     offset: PageOffset,
     length: MSize,
     new_position: Option<Position>,
+}
+
+/// Represents the next record read by the [`TableReader`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct NextRecord<E>
+where
+    E: Encode,
+{
+    pub record: E,
+    pub page: Page,
+    pub offset: PageOffset,
 }
 
 /// A reader for the table registry that allows reading records from memory.
@@ -67,7 +78,7 @@ where
     }
 
     /// Reads the next record from the table registry.
-    pub fn try_next(&mut self) -> MemoryResult<Option<E>> {
+    pub fn try_next(&mut self) -> MemoryResult<Option<NextRecord<E>>> {
         let Some(Position { page, offset, size }) = self.position else {
             return Ok(None);
         };
@@ -86,7 +97,11 @@ where
         // update position
         self.position = next_record.new_position;
 
-        Ok(Some(record.data))
+        Ok(Some(NextRecord {
+            record: record.data,
+            page: next_record.page,
+            offset: next_record.offset,
+        }))
     }
 
     /// Finds the next record starting from the given position.
@@ -98,7 +113,7 @@ where
         mut page: Page,
         offset: PageOffset,
         mut page_size: u64,
-    ) -> MemoryResult<Option<NextRecord>> {
+    ) -> MemoryResult<Option<FoundRecord>> {
         loop {
             // get read_len (cannot read more than page_size)
             let read_len =
@@ -124,7 +139,7 @@ where
                         size: page_size,
                     })
                 };
-                return Ok(Some(NextRecord {
+                return Ok(Some(FoundRecord {
                     page,
                     offset: next_segment_offset,
                     length: next_segment_size,
@@ -200,7 +215,9 @@ mod tests {
 
         // should read all records
         let mut id = 0;
-        while let Some(user) = reader.try_next().expect("failed to read user") {
+        while let Some(NextRecord { record: user, .. }) =
+            reader.try_next().expect("failed to read user")
+        {
             println!(
                 "Read user: id={}, name={}; new position: {:?}",
                 user.id, user.name, reader.position
