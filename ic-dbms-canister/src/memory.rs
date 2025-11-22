@@ -161,6 +161,38 @@ where
         self.provider.write(absolute_offset, encoded.as_ref())
     }
 
+    /// Zeros out data at the specified page and offset.
+    pub fn zero<E>(&mut self, page: Page, offset: PageOffset, data: &E) -> MemoryResult<()>
+    where
+        E: Encode,
+    {
+        // can't zero unallocated page
+        if self.last_page().is_none_or(|last_page| page > last_page) {
+            return Err(MemoryError::SegmentationFault {
+                page,
+                offset,
+                data_size: data.size(),
+                page_size: P::PAGE_SIZE,
+            });
+        }
+
+        let length = data.size() as usize;
+
+        if offset as u64 + (length as u64) > P::PAGE_SIZE {
+            return Err(MemoryError::SegmentationFault {
+                page,
+                offset,
+                data_size: data.size(),
+                page_size: P::PAGE_SIZE,
+            });
+        }
+
+        // get absolute offset
+        let absolute_offset = self.absolute_offset(page, offset);
+        let buffer = vec![0u8; length];
+        self.provider.write(absolute_offset, buffer.as_ref())
+    }
+
     /// Reads raw bytes into the provided buffer at the specified page and offset.
     pub fn read_at_raw(
         &self,
@@ -264,6 +296,52 @@ mod tests {
             manager
                 .write_at(ACL_PAGE, 10, &data_to_write)
                 .expect("Failed to write data to ACL page");
+        });
+    }
+
+    #[test]
+    fn test_should_zero_data() {
+        // write to ACL page
+        MEMORY_MANAGER.with_borrow_mut(|manager| {
+            let data_to_write = FixedSizeData { a: 100, b: 200 };
+            manager
+                .write_at(ACL_PAGE, 50, &data_to_write)
+                .expect("Failed to write data to ACL page");
+
+            // zero the data
+            manager
+                .zero(ACL_PAGE, 50, &data_to_write)
+                .expect("Failed to zero data on ACL page");
+
+            let mut buffer = vec![0; 50];
+
+            manager
+                .read_at_raw(ACL_PAGE, 50, &mut buffer)
+                .expect("Failed to read data from ACL page");
+
+            assert!(buffer.iter().all(|&b| b == 0));
+        });
+    }
+
+    #[test]
+    fn test_should_not_zero_unallocated_page() {
+        MEMORY_MANAGER.with_borrow_mut(|manager| {
+            let data_to_zero = FixedSizeData { a: 1, b: 2 };
+            let result = manager.zero(10, 0, &data_to_zero);
+            assert!(matches!(result, Err(MemoryError::SegmentationFault { .. })));
+        });
+    }
+
+    #[test]
+    fn test_should_not_zero_out_of_bounds() {
+        MEMORY_MANAGER.with_borrow_mut(|manager| {
+            let data_to_zero = FixedSizeData { a: 1, b: 2 };
+            let result = manager.zero(
+                ACL_PAGE,
+                (HeapMemoryProvider::PAGE_SIZE - 3) as PageOffset,
+                &data_to_zero,
+            );
+            assert!(matches!(result, Err(MemoryError::SegmentationFault { .. })));
         });
     }
 

@@ -11,7 +11,9 @@ use self::page_ledger::PageLedger;
 pub use self::table_reader::{NextRecord, TableReader};
 use self::write_at::WriteAt;
 use crate::memory::table_registry::raw_record::RawRecord;
-use crate::memory::{Encode, MEMORY_MANAGER, MSize, MemoryResult, TableRegistryPage};
+use crate::memory::{
+    Encode, MEMORY_MANAGER, MSize, MemoryResult, Page, PageOffset, TableRegistryPage,
+};
 
 /// Each record is prefixed with its length encoded in 2 bytes and a magic header byte.
 const RAW_RECORD_HEADER_SIZE: MSize = 3;
@@ -67,6 +69,20 @@ where
     /// Use [`TableReader::try_next`] to read records one by one.
     pub fn read(&self) -> TableReader<'_, E> {
         TableReader::new(&self.page_ledger)
+    }
+
+    /// Deletes a record at the given page and offset.
+    ///
+    /// The space occupied by the record is marked as free and zeroed.
+    pub fn delete(&mut self, record: E, page: Page, offset: PageOffset) -> MemoryResult<()> {
+        let raw_record = RawRecord::new(record);
+
+        // zero the record in memory
+        MEMORY_MANAGER.with_borrow_mut(|mm| mm.zero(page, offset, &raw_record))?;
+
+        // insert a free segment for the deleted record
+        self.free_segments_ledger
+            .insert_free_segment(page, offset, &raw_record)
     }
 
     /// Gets the position where to write a record of the given size.
@@ -127,19 +143,7 @@ mod tests {
 
     #[test]
     fn test_should_get_write_at_end() {
-        let page_ledger_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let free_segments_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let table_pages = TableRegistryPage {
-            pages_list_page: page_ledger_page,
-            free_segments_page,
-        };
-
-        let mut registry: TableRegistry<User> =
-            TableRegistry::load(table_pages).expect("failed to load");
+        let mut registry = registry();
 
         let record = RawRecord::new(User {
             id: 1,
@@ -154,19 +158,7 @@ mod tests {
 
     #[test]
     fn test_should_get_write_at_free_segment() {
-        let page_ledger_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let free_segments_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let table_pages = TableRegistryPage {
-            pages_list_page: page_ledger_page,
-            free_segments_page,
-        };
-
-        let mut registry: TableRegistry<User> =
-            TableRegistry::load(table_pages).expect("failed to load");
+        let mut registry = registry();
 
         let record = RawRecord::new(User {
             id: 1,
@@ -202,19 +194,7 @@ mod tests {
 
     #[test]
     fn test_should_insert_record_into_table_registry() {
-        let page_ledger_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let free_segments_page = MEMORY_MANAGER
-            .with_borrow_mut(|mm| mm.allocate_page())
-            .expect("failed to get page");
-        let table_pages = TableRegistryPage {
-            pages_list_page: page_ledger_page,
-            free_segments_page,
-        };
-
-        let mut registry: TableRegistry<User> =
-            TableRegistry::load(table_pages).expect("failed to load");
+        let mut registry = registry();
 
         let record = User {
             id: 1,
@@ -227,6 +207,69 @@ mod tests {
 
     #[test]
     fn test_should_manage_to_insert_users_to_exceed_one_page() {
+        let mut registry = registry();
+
+        for id in 0..4000 {
+            let record = User {
+                id,
+                name: format!("User {}", id),
+            };
+            registry.insert(record).expect("failed to insert record");
+        }
+    }
+
+    #[test]
+    fn test_should_delete_record() {
+        let mut registry = registry();
+
+        let record = User {
+            id: 1,
+            name: "Test".to_string(),
+        };
+
+        // insert record
+        registry.insert(record.clone()).expect("failed to insert");
+
+        // find where it was written
+        let mut reader = registry.read();
+        let next_record = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+        let page = next_record.page;
+        let offset = next_record.offset;
+        let record = next_record.record;
+        let raw_user = RawRecord::new(record.clone());
+        let raw_user_size = raw_user.size();
+
+        // delete record
+        assert!(registry.delete(record, page, offset).is_ok());
+
+        // should have been deleted
+        let mut reader = registry.read();
+        assert!(reader.try_next().expect("failed to read").is_none());
+
+        // should have a free segment
+        let free_segment = registry
+            .free_segments_ledger
+            .find_reusable_segment(&User {
+                id: 2,
+                name: "Test".to_string(),
+            })
+            .expect("could not find the free segment after free");
+        assert_eq!(free_segment.page, page);
+        assert_eq!(free_segment.offset, offset);
+        assert_eq!(free_segment.size, raw_user_size);
+
+        // should have zeroed the memory
+        let mut buffer = vec![0u8; raw_user_size as usize];
+        MEMORY_MANAGER
+            .with_borrow(|mm| mm.read_at_raw(page, offset, &mut buffer))
+            .expect("failed to read memory");
+        assert!(buffer.iter().all(|&b| b == 0));
+    }
+
+    fn registry() -> TableRegistry<User> {
         let page_ledger_page = MEMORY_MANAGER
             .with_borrow_mut(|mm| mm.allocate_page())
             .expect("failed to get page");
@@ -238,15 +281,6 @@ mod tests {
             free_segments_page,
         };
 
-        let mut registry: TableRegistry<User> =
-            TableRegistry::load(table_pages).expect("failed to load");
-
-        for id in 0..4000 {
-            let record = User {
-                id,
-                name: format!("User {}", id),
-            };
-            registry.insert(record).expect("failed to insert record");
-        }
+        TableRegistry::load(table_pages).expect("failed to load")
     }
 }
