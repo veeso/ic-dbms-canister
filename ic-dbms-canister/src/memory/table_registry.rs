@@ -85,6 +85,51 @@ where
             .insert_free_segment(page, offset, &raw_record)
     }
 
+    /// Updates a record at the given page and offset.
+    ///
+    /// The logic is the following:
+    ///
+    /// 1. If the new record has exactly the same size of the old record, overwrite it in place.
+    /// 2. If the new record does not fit, delete the old record and insert the new record.
+    pub fn update(
+        &mut self,
+        new_record: E,
+        old_record: E,
+        old_page: Page,
+        old_offset: PageOffset,
+    ) -> MemoryResult<()> {
+        if new_record.size() == old_record.size() {
+            self.update_in_place(new_record, old_page, old_offset)
+        } else {
+            self.update_by_realloc(new_record, old_record, old_page, old_offset)
+        }
+    }
+
+    /// Update a [`RawRecord`] in place at the given page and offset.
+    ///
+    /// This must be used IF AND ONLY if the new record has the SAME size as the old record.
+    fn update_in_place(&mut self, record: E, page: Page, offset: PageOffset) -> MemoryResult<()> {
+        let raw_record = RawRecord::new(record);
+        MEMORY_MANAGER.with_borrow_mut(|mm| mm.write_at(page, offset, &raw_record))
+    }
+
+    /// Updates a record by reallocating it.
+    ///
+    /// The old record is deleted and the new record is inserted.
+    fn update_by_realloc(
+        &mut self,
+        new_record: E,
+        old_record: E,
+        old_page: Page,
+        old_offset: PageOffset,
+    ) -> MemoryResult<()> {
+        // delete old record
+        self.delete(old_record, old_page, old_offset)?;
+
+        // insert new record
+        self.insert(new_record)
+    }
+
     /// Gets the position where to write a record of the given size.
     fn get_write_position(&mut self, record: &RawRecord<E>) -> MemoryResult<WriteAt> {
         // check if there is a free segment that can hold the record
@@ -267,6 +312,111 @@ mod tests {
             .with_borrow(|mm| mm.read_at_raw(page, offset, &mut buffer))
             .expect("failed to read memory");
         assert!(buffer.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn test_should_update_record_in_place() {
+        let mut registry = registry();
+
+        let old_record = User {
+            id: 1,
+            name: "John".to_string(),
+        };
+        let new_record = User {
+            id: 1,
+            name: "Mark".to_string(), // same length as "John"
+        };
+
+        // insert old record
+        registry
+            .insert(old_record.clone())
+            .expect("failed to insert");
+
+        // find where it was written
+        let mut reader = registry.read();
+        let next_record = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+        let page = next_record.page;
+        let offset = next_record.offset;
+
+        // update in place
+        assert!(
+            registry
+                .update(new_record.clone(), next_record.record.clone(), page, offset)
+                .is_ok()
+        );
+
+        // read back the record
+        let mut reader = registry.read();
+        let next_record = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+        assert_eq!(next_record.page, page); // should be same page
+        assert_eq!(next_record.offset, offset); // should be same offset
+        assert_eq!(next_record.record, new_record);
+    }
+
+    #[test]
+    fn test_should_update_record_reallocating() {
+        let mut registry = registry();
+
+        let old_record = User {
+            id: 1,
+            name: "John".to_string(),
+        };
+        // this user creates a record with same size as old_record to avoid reusing the free segment
+        let extra_user = User {
+            id: 2,
+            name: "Extra".to_string(),
+        };
+        let new_record = User {
+            id: 1,
+            name: "Alexander".to_string(), // longer than "John"
+        };
+
+        // insert old record
+        registry
+            .insert(old_record.clone())
+            .expect("failed to insert");
+        // insert extra record to avoid reusing the free segment
+        registry
+            .insert(extra_user.clone())
+            .expect("failed to insert extra user");
+
+        // find where it was written
+        let mut reader = registry.read();
+        let old_record = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+        let page = old_record.page;
+        let offset = old_record.offset;
+
+        // update by reallocating
+        assert!(
+            registry
+                .update(new_record.clone(), old_record.record.clone(), page, offset)
+                .is_ok()
+        );
+
+        // read back the record
+        let mut reader = registry.read();
+
+        // find extra record first
+        let _ = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+
+        let updated_record = reader
+            .try_next()
+            .expect("failed to read")
+            .expect("no record");
+        assert_ne!(updated_record.offset, offset); // should be different offset
+        assert_eq!(updated_record.record, new_record);
     }
 
     fn registry() -> TableRegistry<User> {

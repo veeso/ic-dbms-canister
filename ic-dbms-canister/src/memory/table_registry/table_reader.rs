@@ -125,9 +125,7 @@ where
             }
 
             // find next record in buffer; if found, return it
-            let buf_end = (page_size as usize)
-                .saturating_sub(offset as usize)
-                .max(offset as usize);
+            let buf_end = (page_size as usize).max(offset as usize);
             if let Some((next_segment_offset, next_segment_size)) =
                 self.find_next_record_position(&self.buffer[(offset as usize)..buf_end])?
             {
