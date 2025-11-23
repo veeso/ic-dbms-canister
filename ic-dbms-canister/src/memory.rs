@@ -1,7 +1,6 @@
 //! Memory module provides stable memory management for the IC DBMS Canister.
 
 mod acl;
-mod delegate;
 mod encode;
 mod error;
 mod provider;
@@ -11,7 +10,6 @@ mod table_registry;
 use std::cell::RefCell;
 
 pub use self::acl::{ACL, AccessControlList};
-pub use self::delegate::MemoryDelegate;
 pub use self::encode::{DataSize, Encode};
 pub use self::error::MemoryError;
 use self::provider::MemoryProvider;
