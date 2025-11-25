@@ -10,7 +10,7 @@ const TYPE_SIZE: usize = 2 + 1 + 1 + 1 + 1 + 1 + 4 + 2; // year + month + day + 
 
 /// Date time data type for the DBMS.
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, CandidType, Serialize, Deserialize,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, CandidType, Serialize, Deserialize,
 )]
 pub struct DateTime {
     pub year: u16,
@@ -147,5 +147,42 @@ mod tests {
         let buf = candid::encode_one(src).expect("Candid encoding failed");
         let decoded: DateTime = candid::decode_one(&buf).expect("Candid decoding failed");
         assert_eq!(src, decoded);
+    }
+
+    #[test]
+    fn test_should_compare_datetimes() {
+        let dt1 = DateTime {
+            year: 2024,
+            month: 6,
+            day: 15,
+            hour: 12,
+            minute: 30,
+            second: 45,
+            microsecond: 123456,
+            timezone_offset_minutes: -120,
+        };
+        let dt2 = DateTime {
+            year: 2024,
+            month: 6,
+            day: 15,
+            hour: 12,
+            minute: 30,
+            second: 45,
+            microsecond: 123457,
+            timezone_offset_minutes: -120,
+        };
+        let dt3 = DateTime {
+            year: 2024,
+            month: 6,
+            day: 15,
+            hour: 12,
+            minute: 31,
+            second: 0,
+            microsecond: 0,
+            timezone_offset_minutes: -120,
+        };
+        assert!(dt1 < dt2);
+        assert!(dt2 < dt3);
+        assert!(dt1 < dt3);
     }
 }

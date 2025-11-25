@@ -8,7 +8,7 @@ use crate::memory::{DataSize, Encode};
 
 /// Date data type for the DBMS.
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, CandidType, Serialize, Deserialize,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, CandidType, Serialize, Deserialize,
 )]
 pub struct Date {
     pub year: u16,
@@ -94,5 +94,34 @@ mod tests {
         let buf = candid::encode_one(src).expect("Candid encoding failed");
         let decoded: Date = candid::decode_one(&buf).expect("Candid decoding failed");
         assert_eq!(src, decoded);
+    }
+
+    #[test]
+    fn test_should_compare_dates() {
+        let date1 = Date {
+            year: 2024,
+            month: 6,
+            day: 15,
+        };
+        let date2 = Date {
+            year: 2024,
+            month: 6,
+            day: 16,
+        };
+        let date3 = Date {
+            year: 2024,
+            month: 7,
+            day: 1,
+        };
+        let date4 = Date {
+            year: 2025,
+            month: 1,
+            day: 1,
+        };
+
+        assert!(date1 < date2);
+        assert!(date2 < date3);
+        assert!(date3 < date4);
+        assert!(date4 > date1);
     }
 }

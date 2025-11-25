@@ -1,12 +1,17 @@
 //! This module exposes all the types related to queries that can be performed on the DBMS.
 
 mod builder;
+mod filter;
 mod table_ops;
+
+use std::marker::PhantomData;
 
 use thiserror::Error;
 
 pub use self::builder::QueryBuilder;
+pub use self::filter::Filter;
 pub use self::table_ops::TableOps;
+use crate::dbms::table::TableSchema;
 use crate::memory::MemoryError;
 
 /// The result type for query operations.
@@ -80,4 +85,13 @@ pub enum QueryError {
 
 /// A struct representing a query in the DBMS.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Query;
+pub struct Query<T>
+where
+    T: TableSchema,
+{
+    /// Relations to eagerly load with the main records.
+    pub eager_relations: Vec<&'static str>,
+    /// [`Filter`]s to apply to the query.
+    pub filters: Vec<Filter>,
+    pub _marker: PhantomData<T>,
+}
