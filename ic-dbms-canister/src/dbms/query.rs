@@ -41,7 +41,7 @@ pub enum QueryError {
 
     /// Tried to reference a column that does not exist in the table schema.
     #[error("Unknown column: {0}")]
-    UnknownColumn(String),
+    UnknownColumn(&'static str),
 
     /// Tried to insert a record missing non-nullable fields.
     #[error("Missing non-nullable field: {0}")]
@@ -83,15 +83,102 @@ pub enum QueryError {
     Internal(String),
 }
 
+/// An enum representing the fields to select in a query.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum Select {
+    #[default]
+    All,
+    Columns(Vec<&'static str>),
+}
+
+/// An enum representing the direction of ordering in a query.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrderDirection {
+    Ascending,
+    Descending,
+}
+
 /// A struct representing a query in the DBMS.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query<T>
 where
     T: TableSchema,
 {
+    /// Fields to select in the query.
+    columns: Select,
     /// Relations to eagerly load with the main records.
-    pub eager_relations: Vec<&'static str>,
-    /// [`Filter`]s to apply to the query.
-    pub filters: Vec<Filter>,
-    pub _marker: PhantomData<T>,
+    pub(crate) eager_relations: Vec<&'static str>,
+    /// [`Filter`] to apply to the query.
+    pub(crate) filter: Option<Filter>,
+    /// Order by clauses for sorting the results.
+    pub(crate) order_by: Vec<(&'static str, OrderDirection)>,
+    /// Limit on the number of records to return.
+    pub(crate) limit: Option<usize>,
+    /// Offset for pagination.
+    pub(crate) offset: Option<usize>,
+    /// Marker for the table schema type.
+    _marker: PhantomData<T>,
+}
+
+impl<T> Default for Query<T>
+where
+    T: TableSchema,
+{
+    fn default() -> Self {
+        Self {
+            columns: Select::All,
+            eager_relations: Vec::new(),
+            filter: None,
+            order_by: Vec::new(),
+            limit: None,
+            offset: None,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> Query<T>
+where
+    T: TableSchema,
+{
+    /// Returns the list of columns to be selected in the query.
+    pub fn columns(&self) -> Vec<&'static str> {
+        match &self.columns {
+            Select::All => T::columns().iter().map(|col| col.name).collect(),
+            Select::Columns(cols) => cols.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::tests::User;
+
+    #[test]
+    fn test_should_build_default_query() {
+        let query: Query<User> = Query::default();
+        assert!(matches!(query.columns, Select::All));
+        assert!(query.eager_relations.is_empty());
+        assert!(query.filter.is_none());
+        assert!(query.order_by.is_empty());
+        assert!(query.limit.is_none());
+        assert!(query.offset.is_none());
+    }
+
+    #[test]
+    fn test_should_get_columns() {
+        let query = Query::<User>::default();
+        let columns = query.columns();
+        assert_eq!(columns, vec!["id", "name",]);
+
+        let query = Query::<User> {
+            columns: Select::Columns(vec!["id"]),
+            ..Default::default()
+        };
+
+        let columns = query.columns();
+        assert_eq!(columns, vec!["id"]);
+    }
 }

@@ -9,6 +9,7 @@ pub enum Filter {
     Lt(&'static str, Value),
     Ge(&'static str, Value),
     Le(&'static str, Value),
+    Like(&'static str, Value),
     NotNull(&'static str),
     IsNull(&'static str),
     And(Box<Filter>, Box<Filter>),
@@ -47,6 +48,11 @@ impl Filter {
         Filter::Le(field, value)
     }
 
+    /// Creates a LIKE filter.
+    pub fn like(field: &'static str, value: &str) -> Self {
+        Filter::Like(field, Value::Text(value.to_string().into()))
+    }
+
     /// Creates a NOT NULL filter.
     pub fn not_null(field: &'static str) -> Self {
         Filter::NotNull(field)
@@ -58,12 +64,12 @@ impl Filter {
     }
 
     /// Chain two filters with AND.
-    pub fn and(self, other: Filter) -> Self {
+    pub(crate) fn and(self, other: Filter) -> Self {
         Filter::And(Box::new(self), Box::new(other))
     }
 
     /// Chain two filters with OR.
-    pub fn or(self, other: Filter) -> Self {
+    pub(crate) fn or(self, other: Filter) -> Self {
         Filter::Or(Box::new(self), Box::new(other))
     }
 
@@ -105,6 +111,9 @@ mod tests {
 
         let is_null = Filter::is_null("phone");
         assert!(matches!(is_null, Filter::IsNull("phone")));
+
+        let like = Filter::like("name", "John%");
+        assert!(matches!(like, Filter::Like("name", Value::Text(_))));
 
         // chained filters
         let combined = eq.and(gt).or(is_null.not());
