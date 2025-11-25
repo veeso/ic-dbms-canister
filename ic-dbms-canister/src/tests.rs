@@ -1,6 +1,7 @@
 use crate::dbms::table::{ColumnDef, ForeignKeyDef, TableRecord, TableSchema};
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::memory::{DataSize, Encode};
+use crate::prelude::{Filter, InsertRecord, UpdateRecord};
 
 /// A simple user struct for testing purposes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +13,67 @@ pub struct User {
 pub struct UserRecord {
     pub id: Option<Uint32>,
     pub name: Option<Text>,
+}
+
+pub struct UserInsertRequest {
+    pub id: u32,
+    pub name: String,
+}
+
+impl InsertRecord for UserInsertRequest {
+    type Record = UserRecord;
+    type Schema = User;
+
+    fn into_values(self) -> Vec<crate::dbms::value::Value> {
+        vec![
+            crate::dbms::value::Value::Uint32(self.id.into()),
+            crate::dbms::value::Value::Text(self.name.into()),
+        ]
+    }
+}
+
+pub struct UserUpdateRequest {
+    pub id: Option<u32>,
+    pub name: Option<String>,
+    pub where_clause: Option<Filter>,
+}
+
+impl UpdateRecord for UserUpdateRequest {
+    type Record = UserRecord;
+    type Schema = User;
+
+    fn update_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+        let mut values = vec![];
+        if let Some(id) = self.id {
+            values.push((
+                ColumnDef {
+                    name: "id",
+                    data_type: DataTypeKind::Uint32,
+                    nullable: false,
+                    primary_key: true,
+                    foreign_keys: None,
+                },
+                crate::dbms::value::Value::Uint32(id.into()),
+            ));
+        }
+        if let Some(name) = &self.name {
+            values.push((
+                ColumnDef {
+                    name: "name",
+                    data_type: DataTypeKind::Text,
+                    nullable: false,
+                    primary_key: false,
+                    foreign_keys: None,
+                },
+                crate::dbms::value::Value::Text(name.clone().into()),
+            ));
+        }
+        values
+    }
+
+    fn where_clause(&self) -> Option<Filter> {
+        self.where_clause.clone()
+    }
 }
 
 impl TableRecord for UserRecord {
@@ -61,6 +123,8 @@ impl TableRecord for UserRecord {
 
 impl TableSchema for User {
     type Record = UserRecord;
+    type Insert = UserInsertRequest;
+    type Update = UserUpdateRequest;
 
     fn table_name() -> &'static str {
         "users"

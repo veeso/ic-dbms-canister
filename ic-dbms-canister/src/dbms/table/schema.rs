@@ -1,7 +1,7 @@
 use std::hash::{Hash as _, Hasher as _};
 
-use crate::dbms::table::TableRecord;
 use crate::dbms::table::column_def::{ColumnDef, ForeignKeyDef};
+use crate::dbms::table::{InsertRecord, TableRecord, UpdateRecord};
 
 /// A type representing a unique fingerprint for a table schema.
 pub type TableFingerprint = u64;
@@ -13,8 +13,13 @@ pub trait TableSchema
 where
     Self: 'static,
 {
-    /// The [`TableRecord`] type associated with this table schema.
+    /// The [`TableRecord`] type associated with this table schema;
+    /// which is the data returned by a query.
     type Record: TableRecord<Schema = Self>;
+    /// The [`InsertRecord`] type associated with this table schema.
+    type Insert: InsertRecord<Schema = Self>;
+    /// The [`UpdateRecord`] type associated with this table schema.
+    type Update: UpdateRecord<Schema = Self>;
 
     /// Returns the name of the table.
     fn table_name() -> &'static str;

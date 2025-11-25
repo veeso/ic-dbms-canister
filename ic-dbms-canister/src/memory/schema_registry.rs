@@ -129,6 +129,7 @@ mod tests {
 
     use super::*;
     use crate::dbms::table::{ColumnDef, TableRecord};
+    use crate::prelude::{InsertRecord, UpdateRecord};
     use crate::tests::User;
 
     #[test]
@@ -197,8 +198,36 @@ mod tests {
         }
     }
 
+    struct AnotherTableInsert;
+
+    impl InsertRecord for AnotherTableInsert {
+        type Record = AnotherTableRecord;
+        type Schema = AnotherTable;
+
+        fn into_values(self) -> Vec<crate::dbms::value::Value> {
+            vec![]
+        }
+    }
+
+    struct AnotherTableUpdate;
+
+    impl UpdateRecord for AnotherTableUpdate {
+        type Record = AnotherTableRecord;
+        type Schema = AnotherTable;
+
+        fn update_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+            vec![]
+        }
+
+        fn where_clause(&self) -> Option<crate::prelude::Filter> {
+            None
+        }
+    }
+
     impl TableSchema for AnotherTable {
         type Record = AnotherTableRecord;
+        type Insert = AnotherTableInsert;
+        type Update = AnotherTableUpdate;
 
         fn table_name() -> &'static str {
             "another_table"
