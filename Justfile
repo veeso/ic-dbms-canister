@@ -1,4 +1,5 @@
 import "./just/code_check.just"
+import "./just/publish.just"
 import "./just/test.just"
 
 WASM_DIR := env("WASM_DIR", "./.artifact")

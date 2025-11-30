@@ -1,19 +1,21 @@
 //! Post mock type; 1 user has many posts.
 
+use ic_dbms_macros::Encode;
+
 use crate::dbms::query::QueryResult;
 use crate::dbms::table::{
     ColumnDef, ForeignKeyDef, TableRecord, TableSchema, UntypedInsertRecord, UntypedUpdateRecord,
 };
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
-use crate::memory::{DataSize, Encode, SCHEMA_REGISTRY, TableRegistry};
+use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
 use crate::prelude::{Filter, InsertRecord, QueryError, UpdateRecord};
 use crate::tests::UserRecord;
 
 /// A simple post struct for testing purposes.
 ///
 /// One [`super::User`] has many [`Post`]s.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Encode, Clone, PartialEq, Eq)]
 pub struct Post {
     pub id: Uint32,
     pub title: Text,
@@ -109,43 +111,6 @@ impl TableSchema for Post {
             (Self::columns()[2], Value::Text(self.content)),
             (Self::columns()[3], Value::Uint32(self.user_id)),
         ]
-    }
-}
-
-impl Encode for Post {
-    const SIZE: DataSize = DataSize::Dynamic;
-
-    fn size(&self) -> crate::memory::MSize {
-        self.id.size() + self.title.size() + self.content.size() + self.user_id.size()
-    }
-
-    fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
-        let mut encoded = Vec::with_capacity(self.size() as usize);
-        encoded.extend_from_slice(&self.id.encode());
-        encoded.extend_from_slice(&self.title.encode());
-        encoded.extend_from_slice(&self.content.encode());
-        encoded.extend_from_slice(&self.user_id.encode());
-        std::borrow::Cow::Owned(encoded)
-    }
-
-    fn decode(data: std::borrow::Cow<[u8]>) -> crate::memory::MemoryResult<Self>
-    where
-        Self: Sized,
-    {
-        let mut offset = 0;
-        let id = Uint32::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
-        offset += id.size() as usize;
-        let title = Text::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
-        offset += title.size() as usize;
-        let content = Text::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
-        offset += content.size() as usize;
-        let user_id = Uint32::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
-        Ok(Self {
-            id,
-            title,
-            content,
-            user_id,
-        })
     }
 }
 

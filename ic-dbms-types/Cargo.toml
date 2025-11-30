@@ -1,5 +1,5 @@
 [package]
-name = "ic-dbms-canister"
+name = "ic-dbms-types"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -8,8 +8,8 @@ license = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
 repository = { workspace = true }
-documentation = "https://docs.rs/ic-dbms-canister/"
-description = "A framework to build Database canisters on the Internet Computer using DBMS, by just providing the schema."
+documentation = "https://docs.rs/ic-dbms-types/"
+description = "Types for using the ic-dbms-canister in external canisters."
 include = [
   "examples/**/*",
   "src/**/*",

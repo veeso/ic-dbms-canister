@@ -1,5 +1,5 @@
 [workspace]
-members = ["ic-dbms-canister"]
+members = ["ic-dbms-canister", "ic-dbms-macros", "ic-dbms-types"]
 resolver = "2"
 
 [workspace.package]
@@ -18,8 +18,11 @@ getrandom = { version = "0.3", default-features = false }
 ic-cdk = "0.19"
 ic-cdk-macros = "0.19"
 like = "0.3"
+proc-macro2 = "1"
+quote = "1"
 rust_decimal = "1"
 serde = "1"
+syn = "2"
 thiserror = "2"
 uuid = { version = "1", default-features = false, features = [
   "v7",

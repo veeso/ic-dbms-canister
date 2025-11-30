@@ -1,14 +1,16 @@
+use ic_dbms_macros::Encode;
+
 use crate::dbms::query::QueryResult;
 use crate::dbms::table::{
     ColumnDef, ForeignKeyDef, TableRecord, TableSchema, UntypedInsertRecord, UntypedUpdateRecord,
 };
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
-use crate::memory::{DataSize, Encode, SCHEMA_REGISTRY, TableRegistry};
+use crate::memory::{Encode, SCHEMA_REGISTRY, TableRegistry};
 use crate::prelude::{Filter, InsertRecord, QueryError, UpdateRecord};
 
 /// A simple user struct for testing purposes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Encode, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: Uint32,
     pub name: Text,
@@ -219,32 +221,6 @@ impl TableSchema for User {
             (Self::columns()[0], Value::Uint32(self.id)),
             (Self::columns()[1], Value::Text(self.name)),
         ]
-    }
-}
-
-impl Encode for User {
-    const SIZE: DataSize = DataSize::Dynamic;
-
-    fn size(&self) -> crate::memory::MSize {
-        self.id.size() + self.name.size()
-    }
-
-    fn encode(&'_ self) -> std::borrow::Cow<'_, [u8]> {
-        let mut buffer = Vec::with_capacity(self.size() as usize);
-        buffer.extend_from_slice(&self.id.encode());
-        buffer.extend_from_slice(&self.name.encode());
-        std::borrow::Cow::Owned(buffer)
-    }
-
-    fn decode(data: std::borrow::Cow<[u8]>) -> crate::memory::MemoryResult<Self>
-    where
-        Self: Sized,
-    {
-        let id = Uint32::decode(std::borrow::Cow::Borrowed(&data[0..]))?;
-        let offset = id.size() as usize;
-        let name = Text::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
-
-        Ok(User { id, name })
     }
 }
 

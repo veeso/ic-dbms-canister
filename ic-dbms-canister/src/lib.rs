@@ -14,6 +14,9 @@
     html_logo_url = "https://raw.githubusercontent.com/veeso/ic-dbms-canister/main/assets/images/cargo/logo-512.png"
 )]
 
+// makes the crate accessible as `ic_dbms_canister` in macros
+extern crate self as ic_dbms_canister;
+
 use thiserror::Error;
 
 pub mod dbms;
