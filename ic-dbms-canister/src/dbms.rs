@@ -1,19 +1,22 @@
 //! This module exposes all the types related to the DBMS engine.
 
-use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
-use crate::dbms::transaction::TransactionId;
-use crate::dbms::value::Value;
-use crate::memory::{NextRecord, SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{
-    Filter, InsertRecord, Query, TRANSACTION_SESSION, TableError, TableSchema, TransactionError,
-};
-use crate::{IcDbmsError, IcDbmsResult};
-
+pub mod foreign_fetcher;
 pub mod query;
 pub mod table;
 pub mod transaction;
 pub mod types;
 pub mod value;
+
+use self::foreign_fetcher::ForeignFetcher;
+use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
+use crate::dbms::transaction::TransactionId;
+use crate::dbms::value::Value;
+use crate::memory::{NextRecord, SCHEMA_REGISTRY, TableRegistry};
+use crate::prelude::{
+    Filter, InsertRecord, Query, QueryError, TRANSACTION_SESSION, TableError, TableSchema,
+    TransactionError,
+};
+use crate::{IcDbmsError, IcDbmsResult};
 
 /// Default capacity limit for SELECT queries.
 const DEFAULT_SELECT_LIMIT: usize = 128;
@@ -194,6 +197,8 @@ impl Database {
     }
 
     /// Select only the queried fields from the given record values.
+    ///
+    /// It also loads eager relations if any.
     fn select_queried_fields<T>(
         &self,
         mut record_values: Vec<(ColumnDef, Value)>,
@@ -202,13 +207,37 @@ impl Database {
     where
         T: TableSchema,
     {
+        let mut queried_fields = vec![];
+
+        // handle eager relations
+        // FIXME: currently we fetch the FK for each record, which is shit.
+        // In the future, we should batch fetch foreign keys for all records in the result set.
+        for relation in &query.eager_relations {
+            // get fk value
+            let fk_value = record_values
+                .iter()
+                .find(|(col_def, _)| {
+                    col_def
+                        .foreign_key
+                        .is_some_and(|fk| fk.foreign_table == *relation)
+                })
+                .map(|(_, value)| value.clone())
+                .ok_or(IcDbmsError::Query(QueryError::InvalidQuery(format!(
+                    "Primary key not found for table {}",
+                    T::table_name()
+                ))))?;
+
+            queried_fields.extend(T::foreign_fetcher().fetch(self, relation, fk_value)?);
+        }
+
         // short-circuit if all selected
         if query.all_selected() {
-            return Ok(vec![(T::table_name(), record_values)]);
+            queried_fields.extend(vec![(T::table_name(), record_values)]);
+            return Ok(queried_fields);
         }
         record_values.retain(|(col_def, _)| query.columns().contains(&col_def.name));
-        // TODO: handle eager relations
-        Ok(vec![(T::table_name(), record_values)])
+        queried_fields.extend(vec![(T::table_name(), record_values)]);
+        Ok(queried_fields)
     }
 
     /// Load the table registry for the given table schema.
@@ -231,7 +260,7 @@ mod tests {
     use candid::Nat;
 
     use super::*;
-    use crate::tests::{USERS_FIXTURES, User, load_fixtures};
+    use crate::tests::{POSTS_FIXTURES, Post, USERS_FIXTURES, User, load_fixtures};
 
     #[test]
     fn test_should_init_dbms() {
@@ -302,6 +331,48 @@ mod tests {
     }
 
     #[test]
+    fn test_should_select_post_with_relation() {
+        load_fixtures();
+        let dbms = Database::oneshot();
+        let query = Query::<Post>::builder()
+            .all()
+            .with(User::table_name())
+            .build();
+        let posts = dbms.select(query).expect("failed to select posts");
+        assert_eq!(posts.len(), POSTS_FIXTURES.len());
+
+        for (id, post) in posts.into_iter().enumerate() {
+            let (expected_title, expected_content, expected_user_id) = &POSTS_FIXTURES[id];
+            assert_eq!(post.id.expect("should have id").0 as usize, id);
+            assert_eq!(
+                post.title.as_ref().expect("should have title").0,
+                *expected_title
+            );
+            assert_eq!(
+                post.content.as_ref().expect("should have content").0,
+                *expected_content
+            );
+            let user_query = Query::<User>::builder()
+                .and_where(Filter::eq("id", Value::Uint32((*expected_user_id).into())))
+                .build();
+            let author = dbms
+                .select(user_query)
+                .expect("failed to load user")
+                .pop()
+                .expect("should have user");
+            assert_eq!(post.user.expect("should have loaded user"), author);
+        }
+    }
+
+    #[test]
+    fn test_should_fail_loading_unexisting_column_on_select() {
+        let dbms = Database::oneshot();
+        let query = Query::<User>::builder().field("unexisting_column").build();
+        let result = dbms.select(query);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_should_select_queried_fields() {
         let dbms = Database::oneshot();
 
@@ -327,6 +398,84 @@ mod tests {
         assert_eq!(user_fields.len(), 1);
         assert_eq!(user_fields[0].0.name, "name");
         assert_eq!(user_fields[0].1, Value::Text("Alice".to_string().into()));
+    }
+
+    #[test]
+    fn test_should_select_queried_fields_with_relations() {
+        load_fixtures();
+        let dbms = Database::oneshot();
+
+        let record_values = Post::columns()
+            .iter()
+            .cloned()
+            .zip(vec![
+                Value::Uint32(1.into()),
+                Value::Text("Title".to_string().into()),
+                Value::Text("Content".to_string().into()),
+                Value::Uint32(2.into()), // author_id
+            ])
+            .collect::<Vec<(ColumnDef, Value)>>();
+
+        let query: Query<Post> = Query::builder()
+            .field("title")
+            .with(User::table_name())
+            .build();
+        let selected_fields = dbms
+            .select_queried_fields::<Post>(record_values, &query)
+            .expect("failed to select queried fields");
+
+        // check post fields
+        let post_fields = selected_fields
+            .iter()
+            .find(|(table_name, _)| *table_name == Post::table_name())
+            .map(|(_, cols)| cols)
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(post_fields.len(), 1);
+        assert_eq!(post_fields[0].0.name, "title");
+        assert_eq!(post_fields[0].1, Value::Text("Title".to_string().into()));
+
+        // check user fields
+        let user_fields = selected_fields
+            .iter()
+            .find(|(table_name, _)| *table_name == User::table_name())
+            .map(|(_, cols)| cols)
+            .cloned()
+            .unwrap_or_default();
+
+        let expected_user = USERS_FIXTURES[2]; // author_id = 2
+
+        assert_eq!(user_fields.len(), 2);
+        assert_eq!(user_fields[0].0.name, "id");
+        assert_eq!(user_fields[0].1, Value::Uint32(2.into()));
+        assert_eq!(user_fields[1].0.name, "name");
+        assert_eq!(
+            user_fields[1].1,
+            Value::Text(expected_user.to_string().into())
+        );
+    }
+
+    #[test]
+    fn test_should_fail_loading_unexisting_relation() {
+        let dbms = Database::oneshot();
+
+        let record_values = Post::columns()
+            .iter()
+            .cloned()
+            .zip(vec![
+                Value::Uint32(1.into()),
+                Value::Text("Title".to_string().into()),
+                Value::Text("Content".to_string().into()),
+                Value::Uint32(2.into()), // author_id
+            ])
+            .collect::<Vec<(ColumnDef, Value)>>();
+
+        let query: Query<Post> = Query::builder()
+            .field("title")
+            .with("unexisting_relation")
+            .build();
+        let result = dbms.select_queried_fields::<Post>(record_values, &query);
+        assert!(result.is_err());
     }
 
     #[test]

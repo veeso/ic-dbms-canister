@@ -12,6 +12,7 @@ pub enum Filter {
     Gt(&'static str, Value),
     Lt(&'static str, Value),
     Ge(&'static str, Value),
+    In(&'static str, Vec<Value>),
     Le(&'static str, Value),
     Like(&'static str, String),
     NotNull(&'static str),
@@ -50,6 +51,11 @@ impl Filter {
     /// Creates a less-than-or-equal filter.
     pub fn le(field: &'static str, value: Value) -> Self {
         Filter::Le(field, value)
+    }
+
+    /// Creates an IN filter.
+    pub fn in_list(field: &'static str, values: Vec<Value>) -> Self {
+        Filter::In(field, values)
     }
 
     /// Creates a LIKE filter.
@@ -104,6 +110,9 @@ impl Filter {
             Filter::Le(field, value) => values
                 .iter()
                 .any(|(col, val)| col.name == *field && val <= value),
+            Filter::In(field, list) => values
+                .iter()
+                .any(|(col, val)| col.name == *field && list.iter().any(|v| v == val)),
             Filter::Like(field, pattern) => {
                 for (col, val) in values {
                     if col.name == *field {
@@ -193,7 +202,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(30.into()),
         )];
@@ -207,7 +216,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(35.into()),
         )];
@@ -225,7 +234,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(25.into()),
         )];
@@ -239,7 +248,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(30.into()),
         )];
@@ -257,7 +266,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(25.into()),
         )];
@@ -271,7 +280,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(10.into()),
         )];
@@ -289,7 +298,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(25.into()),
         )];
@@ -303,7 +312,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(40.into()),
         )];
@@ -321,7 +330,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(25.into()),
         )];
@@ -336,7 +345,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(30.into()),
         )];
@@ -351,7 +360,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(20.into()),
         )];
@@ -369,7 +378,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(25.into()),
         )];
@@ -384,7 +393,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(20.into()),
         )];
@@ -399,7 +408,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(35.into()),
         )];
@@ -417,7 +426,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Null,
         )];
@@ -431,7 +440,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("Alice".to_string())),
         )];
@@ -449,7 +458,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("Alice".to_string())),
         )];
@@ -462,7 +471,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Null,
         )];
@@ -479,7 +488,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("Johnathan".to_string())),
         )];
@@ -493,7 +502,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("Alice".to_string())),
         )];
@@ -511,7 +520,7 @@ mod tests {
                 data_type: DataTypeKind::Int32,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Int32(30.into()),
         )];
@@ -529,7 +538,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("100% match".to_string())),
         )];
@@ -551,7 +560,7 @@ mod tests {
                     data_type: DataTypeKind::Int32,
                     nullable: false,
                     primary_key: true,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Int32(30.into()),
             ),
@@ -561,7 +570,7 @@ mod tests {
                     data_type: DataTypeKind::Int32,
                     nullable: false,
                     primary_key: false,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Int32(20.into()),
             ),
@@ -571,7 +580,7 @@ mod tests {
                     data_type: DataTypeKind::Text,
                     nullable: true,
                     primary_key: false,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Text(Text("Alice".to_string())),
             ),
@@ -588,7 +597,7 @@ mod tests {
                     data_type: DataTypeKind::Int32,
                     nullable: false,
                     primary_key: true,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Int32(25.into()),
             ),
@@ -598,7 +607,7 @@ mod tests {
                     data_type: DataTypeKind::Int32,
                     nullable: false,
                     primary_key: false,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Int32(16.into()),
             ),
@@ -608,7 +617,7 @@ mod tests {
                     data_type: DataTypeKind::Text,
                     nullable: true,
                     primary_key: false,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 Value::Null,
             ),
@@ -627,7 +636,7 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Null,
         )];
@@ -641,11 +650,48 @@ mod tests {
                 data_type: DataTypeKind::Text,
                 nullable: true,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             Value::Text(Text("Bob".to_string())),
         )];
 
+        let result = filter.matches(&values).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_should_check_in_list() {
+        let filter = Filter::in_list(
+            "id",
+            vec![
+                Value::Int32(10.into()),
+                Value::Int32(20.into()),
+                Value::Int32(30.into()),
+            ],
+        );
+        let values = vec![(
+            ColumnDef {
+                name: "id",
+                data_type: DataTypeKind::Int32,
+                nullable: false,
+                primary_key: true,
+                foreign_key: None,
+            },
+            Value::Int32(20.into()),
+        )];
+        let result = filter.matches(&values).unwrap();
+        assert!(result);
+
+        let values = vec![(
+            ColumnDef {
+                name: "id",
+                data_type: DataTypeKind::Int32,
+                nullable: false,
+                primary_key: true,
+                foreign_key: None,
+            },
+            Value::Int32(40.into()),
+        )];
         let result = filter.matches(&values).unwrap();
         assert!(!result);
     }

@@ -12,12 +12,16 @@ pub struct ColumnDef {
     /// Indicates if this column is part of the primary key.
     pub primary_key: bool,
     /// Foreign key definition, if any.
-    pub foreign_keys: Option<ForeignKeyDef>,
+    pub foreign_key: Option<ForeignKeyDef>,
 }
 
 /// Defines a foreign key relationship for a column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ForeignKeyDef {
-    pub table: &'static str,
-    pub column: &'static str,
+    /// Name of the local column that holds the foreign key (es: "user_id")
+    pub local_column: &'static str,
+    /// Name of the foreign table (e.g., "users")
+    pub foreign_table: &'static str,
+    /// Name of the foreign column that the FK points to (e.g., "id")
+    pub foreign_column: &'static str,
 }

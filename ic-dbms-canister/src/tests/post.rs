@@ -2,6 +2,7 @@
 
 use ic_dbms_macros::Encode;
 
+use crate::IcDbmsError;
 use crate::dbms::query::QueryResult;
 use crate::dbms::table::{
     ColumnDef, ForeignKeyDef, TableColumns, TableRecord, TableSchema, UntypedInsertRecord,
@@ -10,7 +11,7 @@ use crate::dbms::table::{
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
 use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{Filter, InsertRecord, QueryError, UpdateRecord};
+use crate::prelude::{Filter, ForeignFetcher, InsertRecord, Query, QueryError, UpdateRecord};
 use crate::tests::{User, UserRecord};
 
 /// A simple post struct for testing purposes.
@@ -49,10 +50,55 @@ pub struct PostUpdateRequest {
     pub where_clause: Option<Filter>,
 }
 
+#[derive(Default)]
+pub struct PostForeignFetcher;
+
+impl ForeignFetcher for PostForeignFetcher {
+    fn fetch(
+        &self,
+        database: &crate::prelude::Database,
+        table: &str,
+        pk_value: Value,
+    ) -> crate::IcDbmsResult<TableColumns> {
+        if table != User::table_name() {
+            return Err(IcDbmsError::Query(QueryError::InvalidQuery(format!(
+                "ForeignFetcher: unknown table '{table}' for {table_name} foreign fetcher",
+                table_name = Post::table_name()
+            ))));
+        }
+
+        // query all records from the foreign table
+        let mut users = database.select(
+            Query::<User>::builder()
+                .all()
+                .limit(1)
+                .and_where(Filter::Eq(User::primary_key(), pk_value.clone()))
+                .build(),
+        )?;
+        let user = match users.pop() {
+            Some(user) => user,
+            None => {
+                return Err(IcDbmsError::Query(QueryError::BrokenForeignKeyReference {
+                    table: User::table_name(),
+                    key: pk_value,
+                }));
+            }
+        };
+
+        let values = User::columns()
+            .iter()
+            .zip(user.to_values())
+            .map(|(col_def, value)| (*col_def, value))
+            .collect();
+        Ok(vec![(User::table_name(), values)])
+    }
+}
+
 impl TableSchema for Post {
     type Insert = PostInsertRequest;
     type Record = PostRecord;
     type Update = PostUpdateRequest;
+    type ForeignFetcher = PostForeignFetcher;
 
     fn columns() -> &'static [ColumnDef] {
         &[
@@ -61,30 +107,31 @@ impl TableSchema for Post {
                 data_type: DataTypeKind::Uint32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             ColumnDef {
                 name: "title",
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             ColumnDef {
                 name: "content",
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
             ColumnDef {
                 name: "user_id",
                 data_type: DataTypeKind::Uint32,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: Some(ForeignKeyDef {
-                    table: "users",
-                    column: "id",
+                foreign_key: Some(ForeignKeyDef {
+                    local_column: "user_id",
+                    foreign_table: "users",
+                    foreign_column: "id",
                 }),
             },
         ]
@@ -92,13 +139,6 @@ impl TableSchema for Post {
 
     fn table_name() -> &'static str {
         "posts"
-    }
-
-    fn foreign_keys() -> &'static [ForeignKeyDef] {
-        &[ForeignKeyDef {
-            table: "users",
-            column: "id",
-        }]
     }
 
     fn primary_key() -> &'static str {

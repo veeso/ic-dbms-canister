@@ -1,6 +1,7 @@
 use std::hash::{Hash as _, Hasher as _};
 
-use crate::dbms::table::column_def::{ColumnDef, ForeignKeyDef};
+use crate::dbms::ForeignFetcher;
+use crate::dbms::table::column_def::ColumnDef;
 use crate::dbms::table::{InsertRecord, TableRecord, UpdateRecord};
 use crate::memory::Encode;
 
@@ -21,6 +22,8 @@ where
     type Insert: InsertRecord<Schema = Self>;
     /// The [`UpdateRecord`] type associated with this table schema.
     type Update: UpdateRecord<Schema = Self>;
+    /// The [`ForeignFetcher`] type associated with this table schema.
+    type ForeignFetcher: ForeignFetcher;
 
     /// Returns the name of the table.
     fn table_name() -> &'static str;
@@ -31,11 +34,13 @@ where
     /// Returns the name of the primary key column.
     fn primary_key() -> &'static str;
 
-    /// Returns the foreign key definitions of the table.
-    fn foreign_keys() -> &'static [ForeignKeyDef];
-
     /// Converts itself into a vector of column-value pairs.
     fn to_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)>;
+
+    /// Returns an instance of the [`ForeignFetcher`] for this table schema.
+    fn foreign_fetcher() -> Self::ForeignFetcher {
+        Default::default()
+    }
 
     /// Returns the fingerprint of the table schema.
     fn fingerprint() -> TableFingerprint {

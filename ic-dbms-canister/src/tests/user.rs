@@ -2,13 +2,12 @@ use ic_dbms_macros::Encode;
 
 use crate::dbms::query::QueryResult;
 use crate::dbms::table::{
-    ColumnDef, ForeignKeyDef, TableColumns, TableRecord, TableSchema, UntypedInsertRecord,
-    UntypedUpdateRecord,
+    ColumnDef, TableColumns, TableRecord, TableSchema, UntypedInsertRecord, UntypedUpdateRecord,
 };
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
 use crate::memory::{Encode, SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{Filter, InsertRecord, QueryError, UpdateRecord};
+use crate::prelude::{Filter, InsertRecord, NoForeignFetcher, QueryError, UpdateRecord};
 
 /// A simple user struct for testing purposes.
 #[derive(Debug, Encode, Clone, PartialEq, Eq)]
@@ -17,6 +16,7 @@ pub struct User {
     pub name: Text,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserRecord {
     pub id: Option<Uint32>,
     pub name: Option<Text>,
@@ -84,7 +84,7 @@ impl UpdateRecord for UserUpdateRequest {
                     data_type: DataTypeKind::Uint32,
                     nullable: false,
                     primary_key: true,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 crate::dbms::value::Value::Uint32(id),
             ));
@@ -96,7 +96,7 @@ impl UpdateRecord for UserUpdateRequest {
                     data_type: DataTypeKind::Text,
                     nullable: false,
                     primary_key: false,
-                    foreign_keys: None,
+                    foreign_key: None,
                 },
                 crate::dbms::value::Value::Text(name.clone()),
             ));
@@ -190,6 +190,7 @@ impl TableSchema for User {
     type Record = UserRecord;
     type Insert = UserInsertRequest;
     type Update = UserUpdateRequest;
+    type ForeignFetcher = NoForeignFetcher;
 
     fn table_name() -> &'static str {
         "users"
@@ -202,24 +203,20 @@ impl TableSchema for User {
                 data_type: DataTypeKind::Uint32,
                 nullable: false,
                 primary_key: true,
-                foreign_keys: None,
+                foreign_key: None,
             },
             ColumnDef {
                 name: "name",
                 data_type: DataTypeKind::Text,
                 nullable: false,
                 primary_key: false,
-                foreign_keys: None,
+                foreign_key: None,
             },
         ]
     }
 
     fn primary_key() -> &'static str {
         "id"
-    }
-
-    fn foreign_keys() -> &'static [ForeignKeyDef] {
-        &[]
     }
 
     fn to_values(self) -> Vec<(ColumnDef, Value)> {

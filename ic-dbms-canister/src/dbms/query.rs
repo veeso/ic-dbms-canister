@@ -12,6 +12,7 @@ pub use self::builder::QueryBuilder;
 pub use self::filter::Filter;
 pub use self::table_ops::TableOps;
 use crate::dbms::table::TableSchema;
+use crate::dbms::value::Value;
 use crate::memory::MemoryError;
 
 /// The result type for query operations.
@@ -29,8 +30,8 @@ pub enum QueryError {
     PrimaryKeyConflict,
 
     /// A foreign key references a non-existent record in another table.
-    #[error("Broken foreign key reference to table '{table}' with key '{key}'")]
-    BrokenForeignKeyReference { table: &'static str, key: String },
+    #[error("Broken foreign key reference to table '{table}' with key '{key:?}'")]
+    BrokenForeignKeyReference { table: &'static str, key: Value },
 
     /// Tried to delete or update a record that is referenced by another table's foreign key.
     #[error("Foreign key constraint violation on table '{referencing_table}' for field '{field}'")]

@@ -129,7 +129,7 @@ mod tests {
 
     use super::*;
     use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
-    use crate::prelude::{InsertRecord, UpdateRecord};
+    use crate::prelude::{InsertRecord, NoForeignFetcher, UpdateRecord};
     use crate::tests::User;
 
     #[test]
@@ -259,6 +259,7 @@ mod tests {
         type Record = AnotherTableRecord;
         type Insert = AnotherTableInsert;
         type Update = AnotherTableUpdate;
+        type ForeignFetcher = NoForeignFetcher;
 
         fn table_name() -> &'static str {
             "another_table"
@@ -270,10 +271,6 @@ mod tests {
 
         fn primary_key() -> &'static str {
             ""
-        }
-
-        fn foreign_keys() -> &'static [crate::dbms::table::ForeignKeyDef] {
-            &[]
         }
 
         fn to_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
