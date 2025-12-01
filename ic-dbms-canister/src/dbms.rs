@@ -82,6 +82,7 @@ impl Database {
         let table_registry = self.load_table_registry::<T>()?;
         // read table
         let mut table_reader = table_registry.read();
+        // TODO: get table overlay instead!
         // prepare results vector
         let mut results = Vec::with_capacity(query.limit.unwrap_or(DEFAULT_SELECT_LIMIT));
         // iter and select

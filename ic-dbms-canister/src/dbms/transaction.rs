@@ -1,7 +1,9 @@
 //! This module contains the implementation of transactions within the DBMS engine.
 
+mod overlay;
 mod session;
 
+pub use self::overlay::DatabaseOverlay;
 pub use self::session::{TRANSACTION_SESSION, TransactionId, TransactionSession};
 use crate::dbms::table::{UntypedInsertRecord, UntypedUpdateRecord};
 use crate::prelude::Filter;
@@ -9,7 +11,8 @@ use crate::prelude::Filter;
 /// A transaction represents a sequence of operations performed as a single logical unit of work.
 #[derive(Debug, Default, Clone)]
 pub struct Transaction {
-    pub operations: Vec<Operation>,
+    operations: Vec<Operation>,
+    overlay: DatabaseOverlay,
 }
 
 /// An operation within a [`Transaction`].
