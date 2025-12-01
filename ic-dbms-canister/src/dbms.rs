@@ -9,9 +9,9 @@ pub mod value;
 
 use self::foreign_fetcher::ForeignFetcher;
 use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
-use crate::dbms::transaction::TransactionId;
+use crate::dbms::transaction::{DatabaseOverlay, Transaction, TransactionId};
 use crate::dbms::value::Value;
-use crate::memory::{NextRecord, SCHEMA_REGISTRY, TableRegistry};
+use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
 use crate::prelude::{
     Filter, InsertRecord, Query, QueryError, TRANSACTION_SESSION, TableError, TableSchema,
     TransactionError,
@@ -81,16 +81,22 @@ impl Database {
         // load table registry
         let table_registry = self.load_table_registry::<T>()?;
         // read table
-        let mut table_reader = table_registry.read();
-        // TODO: get table overlay instead!
+        let table_reader = table_registry.read();
+        // get database overlay
+        let mut table_overlay = if self.transaction.is_some() {
+            self.transaction()?.overlay
+        } else {
+            DatabaseOverlay::default()
+        };
+        // overlay table reader
+        let mut table_reader = table_overlay.reader(table_reader);
+
         // prepare results vector
         let mut results = Vec::with_capacity(query.limit.unwrap_or(DEFAULT_SELECT_LIMIT));
         // iter and select
         let mut count = 0;
 
-        while let Some(NextRecord { record, .. }) = table_reader.try_next()? {
-            // convert record to values
-            let values = record.to_values();
+        while let Some(values) = table_reader.try_next()? {
             // check whether it matches the filter
             if let Some(filter) = &query.filter {
                 if !self.record_matches_filter(&values, filter)? {
@@ -188,6 +194,15 @@ impl Database {
         Ok(())
     }
 
+    /// Retrieves the current [`Transaction`].
+    fn transaction(&self) -> IcDbmsResult<Transaction> {
+        let txid = self.transaction.as_ref().ok_or(IcDbmsError::Transaction(
+            TransactionError::NoActiveTransaction,
+        ))?;
+
+        TRANSACTION_SESSION.with_borrow(|ts| ts.get_transaction(txid).cloned())
+    }
+
     /// Returns whether the read given record matches the provided filter.
     fn record_matches_filter(
         &self,
@@ -258,7 +273,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
 
-    use candid::Nat;
+    use candid::{Nat, Principal};
 
     use super::*;
     use crate::tests::{POSTS_FIXTURES, Post, USERS_FIXTURES, User, load_fixtures};
@@ -288,6 +303,59 @@ mod tests {
                 USERS_FIXTURES[i]
             );
         }
+    }
+
+    #[test]
+    fn test_should_select_user_in_overlay() {
+        load_fixtures();
+        // create a transaction
+        let transaction_id =
+            TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
+        // insert
+        TRANSACTION_SESSION.with_borrow_mut(|ts| {
+            let tx = ts
+                .get_transaction_mut(&transaction_id)
+                .expect("should have tx");
+            tx.overlay
+                .insert::<User>(vec![
+                    (
+                        ColumnDef {
+                            name: "id",
+                            data_type: types::DataTypeKind::Uint32,
+                            nullable: false,
+                            primary_key: true,
+                            foreign_key: None,
+                        },
+                        Value::Uint32(999.into()),
+                    ),
+                    (
+                        ColumnDef {
+                            name: "name",
+                            data_type: types::DataTypeKind::Text,
+                            nullable: false,
+                            primary_key: false,
+                            foreign_key: None,
+                        },
+                        Value::Text("OverlayUser".to_string().into()),
+                    ),
+                ])
+                .expect("failed to insert");
+        });
+
+        // select by pk
+        let dbms = Database::from_transaction(transaction_id);
+        let query = Query::<User>::builder()
+            .and_where(Filter::eq("id", Value::Uint32(999.into())))
+            .build();
+        let users = dbms.select(query).expect("failed to select users");
+
+        assert_eq!(users.len(), 1);
+        let user = &users[0];
+        assert_eq!(user.id.expect("should have id").0, 999);
+        assert_eq!(
+            user.name.as_ref().expect("should have name").0,
+            "OverlayUser"
+        );
     }
 
     #[test]

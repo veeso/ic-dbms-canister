@@ -12,7 +12,7 @@ use crate::prelude::Filter;
 #[derive(Debug, Default, Clone)]
 pub struct Transaction {
     operations: Vec<Operation>,
-    overlay: DatabaseOverlay,
+    pub overlay: DatabaseOverlay,
 }
 
 /// An operation within a [`Transaction`].

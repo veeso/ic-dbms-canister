@@ -57,17 +57,14 @@ impl TransactionSession {
         Ok(())
     }
 
-    /// Retrieves the list of [`super::Operation`]s associated with the given [`TransactionId`].
-    pub fn get_transaction_operations(
-        &self,
-        transaction_id: &TransactionId,
-    ) -> IcDbmsResult<&Vec<super::Operation>> {
+    /// Retrieves the [`Transaction`] associated with the given [`TransactionId`].
+    pub fn get_transaction(&self, transaction_id: &TransactionId) -> IcDbmsResult<&Transaction> {
         let transaction = self
             .transactions
             .get(transaction_id)
             .ok_or(IcDbmsError::Query(QueryError::TransactionNotFound))?;
 
-        Ok(&transaction.operations)
+        Ok(transaction)
     }
 
     /// Closes the transaction associated with the given [`TransactionId`].
@@ -77,7 +74,7 @@ impl TransactionSession {
     }
 
     /// Retrieves a mutable reference to the [`Transaction`] associated with the given [`TransactionId`].
-    fn get_transaction_mut(
+    pub fn get_transaction_mut(
         &mut self,
         transaction_id: &TransactionId,
     ) -> IcDbmsResult<&mut Transaction> {
@@ -139,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn test_should_get_transaction_operations() {
+    fn test_should_get_transaction() {
         let mut session = TransactionSession::default();
         let transaction_id = session.begin_transaction(alice());
 
@@ -151,9 +148,10 @@ mod tests {
             .push_operation(&transaction_id, operation.clone())
             .unwrap();
 
-        let operations = session.get_transaction_operations(&transaction_id);
-        assert!(operations.is_ok());
-        let operations = operations.unwrap();
+        let tx = session
+            .get_transaction(&transaction_id)
+            .expect("failed to get tx");
+        let operations = &tx.operations;
         assert_eq!(operations.len(), 1);
         assert!(matches!(operations[0], Operation::Insert(_, _)));
     }
