@@ -19,6 +19,7 @@ pub struct UserRecord {
     pub name: Option<Text>,
 }
 
+#[derive(Clone)]
 pub struct UserInsertRequest {
     pub id: Uint32,
     pub name: Text,
@@ -39,6 +40,13 @@ impl InsertRecord for UserInsertRequest {
             (Self::Schema::columns()[0], Value::Uint32(self.id)),
             (Self::Schema::columns()[1], Value::Text(self.name)),
         ]
+    }
+
+    fn into_record(self) -> Self::Schema {
+        User {
+            id: self.id,
+            name: self.name,
+        }
     }
 }
 

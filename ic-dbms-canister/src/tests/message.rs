@@ -30,6 +30,7 @@ pub struct MessageRecord {
 }
 
 /// An insert request for the `messages` table.
+#[derive(Clone)]
 pub struct MessageInsertRequest {
     pub id: Uint32,
     pub text: Text,
@@ -296,6 +297,16 @@ impl InsertRecord for MessageInsertRequest {
             (Self::Schema::columns()[3], self.recipient_id.into()),
             (Self::Schema::columns()[4], self.read_at.into()),
         ]
+    }
+
+    fn into_record(self) -> Self::Schema {
+        Message {
+            id: self.id,
+            text: self.text,
+            sender_id: self.sender_id,
+            recipient_id: self.recipient_id,
+            read_at: self.read_at,
+        }
     }
 }
 

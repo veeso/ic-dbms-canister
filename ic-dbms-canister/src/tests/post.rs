@@ -32,6 +32,7 @@ pub struct PostRecord {
 }
 
 /// An insert request for the `posts` table.
+#[derive(Clone)]
 pub struct PostInsertRequest {
     pub id: Uint32,
     pub title: Text,
@@ -248,6 +249,15 @@ impl InsertRecord for PostInsertRequest {
             (Self::Schema::columns()[2], Value::Text(self.content)),
             (Self::Schema::columns()[3], Value::Uint32(self.user_id)),
         ]
+    }
+
+    fn into_record(self) -> Self::Schema {
+        Post {
+            id: self.id,
+            title: self.title,
+            content: self.content,
+            user_id: self.user_id,
+        }
     }
 }
 

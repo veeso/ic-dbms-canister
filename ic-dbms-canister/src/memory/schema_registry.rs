@@ -237,6 +237,7 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct AnotherTableInsert;
 
     impl InsertRecord for AnotherTableInsert {
@@ -245,6 +246,10 @@ mod tests {
 
         fn into_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
             vec![]
+        }
+
+        fn into_record(self) -> Self::Schema {
+            AnotherTable
         }
     }
 

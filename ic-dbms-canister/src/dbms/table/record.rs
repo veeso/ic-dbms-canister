@@ -30,7 +30,7 @@ pub trait TableRecord {
 }
 
 /// This trait represents a record for inserting into a table.
-pub trait InsertRecord: Sized {
+pub trait InsertRecord: Sized + Clone {
     /// The [`TableRecord`] type associated with this table schema.
     type Record: TableRecord;
     /// The table schema associated with this record.
@@ -38,6 +38,9 @@ pub trait InsertRecord: Sized {
 
     /// Converts the record into a list of column [`Value`]s for insertion.
     fn into_values(self) -> Vec<(ColumnDef, Value)>;
+
+    /// Converts the insert record into the corresponding table record.
+    fn into_record(self) -> Self::Schema;
 }
 
 /// This trait represents a record for updating a table.

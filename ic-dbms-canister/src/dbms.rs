@@ -131,21 +131,25 @@ impl Database {
     /// # Arguments
     ///
     /// - `record` - The INSERT record to be executed.
-    ///
-    /// # Returns
-    ///
-    /// The number of rows inserted.
-    pub fn insert<T>(&self, record: T::Insert) -> IcDbmsResult<u64>
+    pub fn insert<T>(&self, record: T::Insert) -> IcDbmsResult<()>
     where
         T: TableSchema,
         T::Insert: InsertRecord<Schema = T>,
     {
         // check whether the insert is valid
-        let record_values = record.into_values();
+        let record_values = record.clone().into_values();
         InsertIntegrityValidator::<T>::new(self).validate(&record_values)?;
 
-        // TODO: check whether we are in a transaction context
-        todo!()
+        if self.transaction.is_some() {
+            // TODO: handle insert tx; should we use `dyn TableSchema` here?
+            todo!();
+        } else {
+            // insert directly into the database
+            let mut table_registry = self.load_table_registry::<T>()?;
+            table_registry.insert(record.into_record())?;
+        }
+
+        Ok(())
     }
 
     /// Executes an UPDATE query.
@@ -185,7 +189,15 @@ impl Database {
 
     /// Commits the current transaction.
     pub fn commit(&self) -> IcDbmsResult<()> {
+        let Some(txid) = self.transaction.as_ref() else {
+            return Err(IcDbmsError::Transaction(
+                TransactionError::NoActiveTransaction,
+            ));
+        };
         todo!();
+        TRANSACTION_SESSION.with_borrow_mut(|ts| ts.close_transaction(txid));
+
+        Ok(())
     }
 
     /// Rolls back the current transaction.
@@ -196,8 +208,25 @@ impl Database {
             ));
         };
 
+        todo!();
+
         TRANSACTION_SESSION.with_borrow_mut(|ts| ts.close_transaction(txid));
         Ok(())
+    }
+
+    /// Executes a closure with a mutable reference to the current [`Transaction`].
+    fn with_transaction_mut<F, R>(&self, f: F) -> IcDbmsResult<R>
+    where
+        F: FnOnce(&mut Transaction) -> IcDbmsResult<R>,
+    {
+        let txid = self.transaction.as_ref().ok_or(IcDbmsError::Transaction(
+            TransactionError::NoActiveTransaction,
+        ))?;
+
+        TRANSACTION_SESSION.with_borrow_mut(|ts| {
+            let tx = ts.get_transaction_mut(txid)?;
+            f(tx)
+        })
     }
 
     /// Retrieves the current [`Transaction`].
@@ -305,7 +334,10 @@ mod tests {
     use candid::{Nat, Principal};
 
     use super::*;
-    use crate::tests::{Message, POSTS_FIXTURES, Post, USERS_FIXTURES, User, load_fixtures};
+    use crate::dbms::types::{Text, Uint32};
+    use crate::tests::{
+        Message, POSTS_FIXTURES, Post, USERS_FIXTURES, User, UserInsertRequest, load_fixtures,
+    };
 
     #[test]
     fn test_should_init_dbms() {
@@ -654,6 +686,47 @@ mod tests {
         let dbms = Database::oneshot();
         let table_registry = dbms.load_table_registry::<User>();
         assert!(table_registry.is_ok());
+    }
+
+    #[test]
+    fn test_should_insert_record_without_transaction() {
+        load_fixtures();
+
+        let dbms = Database::oneshot();
+        let new_user = UserInsertRequest {
+            id: Uint32(100u32),
+            name: Text("NewUser".to_string()),
+        };
+
+        let result = dbms.insert::<User>(new_user);
+        assert!(result.is_ok());
+
+        // find user
+        let query = Query::<User>::builder()
+            .and_where(Filter::eq("id", Value::Uint32(100u32.into())))
+            .build();
+        let users = dbms.select(query).expect("failed to select users");
+        assert_eq!(users.len(), 1);
+        let user = &users[0];
+        assert_eq!(user.id.expect("should have id").0, 100);
+        assert_eq!(
+            user.name.as_ref().expect("should have name").0,
+            "NewUser".to_string()
+        );
+    }
+
+    #[test]
+    fn test_should_validate_user_insert_conflict() {
+        load_fixtures();
+
+        let dbms = Database::oneshot();
+        let new_user = UserInsertRequest {
+            id: Uint32(1u32),
+            name: Text("NewUser".to_string()),
+        };
+
+        let result = dbms.insert::<User>(new_user);
+        assert!(result.is_err());
     }
 
     fn init_user_table() {
