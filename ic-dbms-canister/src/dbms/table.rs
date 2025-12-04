@@ -7,7 +7,9 @@ mod schema;
 use thiserror::Error;
 
 pub use self::column_def::{ColumnDef, ForeignKeyDef};
-pub use self::record::{InsertRecord, TableColumns, TableName, TableRecord, UpdateRecord};
+pub use self::record::{
+    InsertRecord, TableColumns, TableName, TableRecord, UpdateRecord, ValuesSource,
+};
 pub use self::schema::{TableFingerprint, TableSchema};
 
 /// Table related errors

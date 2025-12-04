@@ -1,6 +1,6 @@
 use ic_dbms_macros::Encode;
 
-use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, TableSchema};
+use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, TableSchema, ValuesSource};
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
 use crate::memory::{Encode, SCHEMA_REGISTRY, TableRegistry};
@@ -89,7 +89,7 @@ impl TableRecord for UserRecord {
 
         let user_values = values
             .iter()
-            .find(|(table_name, _)| *table_name == Self::Schema::table_name())
+            .find(|(table_name, _)| *table_name == ValuesSource::This)
             .map(|(_, cols)| cols);
 
         for (col_def, value) in user_values.unwrap_or(&vec![]) {

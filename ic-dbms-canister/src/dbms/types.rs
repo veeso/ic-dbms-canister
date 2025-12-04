@@ -3,6 +3,7 @@
 use candid::CandidType;
 use serde::{Deserialize, Serialize};
 
+use crate::dbms::value::Value;
 use crate::memory::Encode;
 
 mod blob;
@@ -52,6 +53,7 @@ pub trait DataType:
     + Encode
     + CandidType
     + Serialize
+    + Into<Value>
     + for<'de> Deserialize<'de>
 {
 }

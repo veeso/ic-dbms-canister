@@ -3,7 +3,19 @@ use crate::dbms::value::Value;
 use crate::prelude::Filter;
 
 pub type TableName = &'static str;
-pub type TableColumns = Vec<(TableName, Vec<(ColumnDef, Value)>)>;
+pub type TableColumns = Vec<(ValuesSource, Vec<(ColumnDef, Value)>)>;
+
+/// Indicates the source of the column values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValuesSource {
+    /// Column values belong to the current table.
+    This,
+    /// Column values belong to a foreign table.
+    Foreign {
+        table: TableName,
+        column: &'static str,
+    },
+}
 
 /// This trait represents a record returned by a [`crate::dbms::query::Query`] for a table.
 pub trait TableRecord {

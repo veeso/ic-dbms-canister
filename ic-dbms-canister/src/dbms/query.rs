@@ -21,10 +21,6 @@ pub type QueryResult<T> = Result<T, QueryError>;
 /// An enum representing possible errors that can occur during query operations.
 #[derive(Debug, Error)]
 pub enum QueryError {
-    /// Attempted to create or modify a table with more than one primary key.
-    #[error("Duplicate primary key defined in table schema")]
-    DuplicatePrimaryKey,
-
     /// The specified primary key value already exists in the table.
     #[error("Primary key conflict: record with the same primary key already exists")]
     PrimaryKeyConflict,

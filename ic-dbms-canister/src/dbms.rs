@@ -8,7 +8,7 @@ pub mod types;
 pub mod value;
 
 use self::foreign_fetcher::ForeignFetcher;
-use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
+use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, ValuesSource};
 use crate::dbms::transaction::{DatabaseOverlay, Transaction, TransactionId};
 use crate::dbms::value::Value;
 use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
@@ -234,30 +234,48 @@ impl Database {
         // FIXME: currently we fetch the FK for each record, which is shit.
         // In the future, we should batch fetch foreign keys for all records in the result set.
         for relation in &query.eager_relations {
-            // get fk value
-            let fk_value = record_values
+            let mut fetched = false;
+            // iter all foreign key with that table
+            for (fk, fk_value) in record_values
                 .iter()
-                .find(|(col_def, _)| {
+                .filter(|(col_def, _)| {
                     col_def
                         .foreign_key
                         .is_some_and(|fk| fk.foreign_table == *relation)
                 })
-                .map(|(_, value)| value.clone())
-                .ok_or(IcDbmsError::Query(QueryError::InvalidQuery(format!(
-                    "Primary key not found for table {}",
-                    T::table_name()
-                ))))?;
+                .map(|(col, value)| {
+                    (
+                        col.foreign_key.as_ref().expect("cannot be empty"),
+                        value.clone(),
+                    )
+                })
+            {
+                // get foreign values
+                queried_fields.extend(T::foreign_fetcher().fetch(
+                    self,
+                    relation,
+                    fk.local_column,
+                    fk_value,
+                )?);
+                fetched = true;
+            }
 
-            queried_fields.extend(T::foreign_fetcher().fetch(self, relation, fk_value)?);
+            if !fetched {
+                return Err(IcDbmsError::Query(QueryError::InvalidQuery(format!(
+                    "Cannot load relation '{}' for table '{}': no foreign key found",
+                    relation,
+                    T::table_name()
+                ))));
+            }
         }
 
         // short-circuit if all selected
         if query.all_selected() {
-            queried_fields.extend(vec![(T::table_name(), record_values)]);
+            queried_fields.extend(vec![(ValuesSource::This, record_values)]);
             return Ok(queried_fields);
         }
         record_values.retain(|(col_def, _)| query.columns().contains(&col_def.name));
-        queried_fields.extend(vec![(T::table_name(), record_values)]);
+        queried_fields.extend(vec![(ValuesSource::This, record_values)]);
         Ok(queried_fields)
     }
 
@@ -281,7 +299,7 @@ mod tests {
     use candid::{Nat, Principal};
 
     use super::*;
-    use crate::tests::{POSTS_FIXTURES, Post, USERS_FIXTURES, User, load_fixtures};
+    use crate::tests::{Message, POSTS_FIXTURES, Post, USERS_FIXTURES, User, load_fixtures};
 
     #[test]
     fn test_should_init_dbms() {
@@ -465,7 +483,7 @@ mod tests {
             .expect("failed to select queried fields");
         let user_fields = selected_fields
             .into_iter()
-            .find(|(table_name, _)| *table_name == User::table_name())
+            .find(|(table_name, _)| *table_name == ValuesSource::This)
             .map(|(_, cols)| cols)
             .unwrap_or_default();
 
@@ -501,7 +519,7 @@ mod tests {
         // check post fields
         let post_fields = selected_fields
             .iter()
-            .find(|(table_name, _)| *table_name == Post::table_name())
+            .find(|(table_name, _)| *table_name == ValuesSource::This)
             .map(|(_, cols)| cols)
             .cloned()
             .unwrap_or_default();
@@ -512,7 +530,13 @@ mod tests {
         // check user fields
         let user_fields = selected_fields
             .iter()
-            .find(|(table_name, _)| *table_name == User::table_name())
+            .find(|(table_name, _)| {
+                *table_name
+                    == ValuesSource::Foreign {
+                        table: User::table_name(),
+                        column: "user_id",
+                    }
+            })
             .map(|(_, cols)| cols)
             .cloned()
             .unwrap_or_default();
@@ -526,6 +550,45 @@ mod tests {
         assert_eq!(
             user_fields[1].1,
             Value::Text(expected_user.to_string().into())
+        );
+    }
+
+    #[test]
+    fn test_should_select_with_two_fk_on_the_same_table() {
+        load_fixtures();
+
+        let query: Query<Message> = Query::builder()
+            .all()
+            .and_where(Filter::Eq("id", Value::Uint32(0.into())))
+            .with("users")
+            .build();
+
+        let dbms = Database::oneshot();
+        let messages = dbms.select(query).expect("failed to select messages");
+        assert_eq!(messages.len(), 1);
+        let message = &messages[0];
+        assert_eq!(message.id.expect("should have id").0, 0);
+        assert_eq!(
+            message
+                .sender
+                .as_ref()
+                .expect("should have sender")
+                .name
+                .as_ref()
+                .unwrap()
+                .0,
+            "Alice"
+        );
+        assert_eq!(
+            message
+                .recipient
+                .as_ref()
+                .expect("should have recipient")
+                .name
+                .as_ref()
+                .unwrap()
+                .0,
+            "Bob"
         );
     }
 

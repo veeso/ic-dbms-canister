@@ -4,6 +4,7 @@ use candid::CandidType;
 use serde::{Deserialize, Serialize};
 
 use crate::dbms::types::DataType;
+use crate::dbms::value::Value;
 use crate::memory::{DataSize, Encode};
 
 /// Nullable data type for the DBMS.
@@ -30,6 +31,18 @@ where
         match self {
             Nullable::Null => write!(f, "NULL"),
             Nullable::Value(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl<T> From<Nullable<T>> for Value
+where
+    T: DataType,
+{
+    fn from(nullable: Nullable<T>) -> Self {
+        match nullable {
+            Nullable::Null => Value::Null,
+            Nullable::Value(v) => v.into(),
         }
     }
 }

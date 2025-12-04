@@ -3,12 +3,14 @@
 use ic_dbms_macros::Encode;
 
 use crate::IcDbmsError;
-use crate::dbms::table::{ColumnDef, ForeignKeyDef, TableColumns, TableRecord, TableSchema};
+use crate::dbms::table::{
+    ColumnDef, ForeignKeyDef, TableColumns, TableRecord, TableSchema, ValuesSource,
+};
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
 use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
 use crate::prelude::{Filter, ForeignFetcher, InsertRecord, Query, QueryError, UpdateRecord};
-use crate::tests::{User, UserRecord};
+use crate::tests::{User, UserRecord, self_reference_values};
 
 /// A simple post struct for testing purposes.
 ///
@@ -53,7 +55,8 @@ impl ForeignFetcher for PostForeignFetcher {
     fn fetch(
         &self,
         database: &crate::prelude::Database,
-        table: &str,
+        table: &'static str,
+        local_column: &'static str,
         pk_value: Value,
     ) -> crate::IcDbmsResult<TableColumns> {
         if table != User::table_name() {
@@ -86,7 +89,13 @@ impl ForeignFetcher for PostForeignFetcher {
             .zip(user.to_values())
             .map(|(col_def, value)| (*col_def, value))
             .collect();
-        Ok(vec![(User::table_name(), values)])
+        Ok(vec![(
+            ValuesSource::Foreign {
+                table,
+                column: local_column,
+            },
+            values,
+        )])
     }
 }
 
@@ -161,7 +170,7 @@ impl TableRecord for PostRecord {
 
         let post_values = values
             .iter()
-            .find(|(table_name, _)| *table_name == Self::Schema::table_name())
+            .find(|(table_name, _)| *table_name == ValuesSource::This)
             .map(|(_, cols)| cols);
 
         for (column, value) in post_values.unwrap_or(&vec![]) {
@@ -185,11 +194,19 @@ impl TableRecord for PostRecord {
             }
         }
 
-        let has_user = values
-            .iter()
-            .any(|(table_name, _)| *table_name == User::table_name());
+        let has_user = values.iter().any(|(source, _)| {
+            *source
+                == ValuesSource::Foreign {
+                    table: User::table_name(),
+                    column: "user_id",
+                }
+        });
         let user = if has_user {
-            Some(UserRecord::from_values(values))
+            Some(UserRecord::from_values(self_reference_values(
+                &values,
+                User::table_name(),
+                "user_id",
+            )))
         } else {
             None
         };

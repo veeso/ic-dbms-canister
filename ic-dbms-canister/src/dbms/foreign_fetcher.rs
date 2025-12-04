@@ -22,7 +22,8 @@ pub trait ForeignFetcher: Default {
     fn fetch(
         &self,
         database: &Database,
-        table: &str,
+        table: &'static str,
+        local_column: &'static str,
         pk_value: Value,
     ) -> IcDbmsResult<TableColumns>;
 }
@@ -35,7 +36,8 @@ impl ForeignFetcher for NoForeignFetcher {
     fn fetch(
         &self,
         _database: &Database,
-        _table: &str,
+        _table: &'static str,
+        _local_column: &'static str,
         _pk_value: Value,
     ) -> IcDbmsResult<TableColumns> {
         unimplemented!("NoForeignFetcher should have a table without foreign keys");
