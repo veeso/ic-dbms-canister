@@ -242,6 +242,54 @@ impl InsertRecord for PostInsertRequest {
     type Record = PostRecord;
     type Schema = Post;
 
+    fn from_values(values: &[(ColumnDef, Value)]) -> crate::IcDbmsResult<Self> {
+        let mut id: Option<Uint32> = None;
+        let mut title: Option<Text> = None;
+        let mut content: Option<Text> = None;
+        let mut user_id: Option<Uint32> = None;
+
+        for (column, value) in values {
+            match column.name {
+                "id" => {
+                    if let Value::Uint32(v) = value {
+                        id = Some(*v);
+                    }
+                }
+                "title" => {
+                    if let Value::Text(v) = value {
+                        title = Some(v.clone());
+                    }
+                }
+                "content" => {
+                    if let Value::Text(v) = value {
+                        content = Some(v.clone());
+                    }
+                }
+                "user_id" => {
+                    if let Value::Uint32(v) = value {
+                        user_id = Some(*v);
+                    }
+                }
+                _ => { /* Ignore unknown columns */ }
+            }
+        }
+
+        Ok(Self {
+            id: id.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "id",
+            )))?,
+            title: title.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "title",
+            )))?,
+            content: content.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "content",
+            )))?,
+            user_id: user_id.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "user_id",
+            )))?,
+        })
+    }
+
     fn into_values(self) -> Vec<(ColumnDef, Value)> {
         vec![
             (Self::Schema::columns()[0], Value::Uint32(self.id)),

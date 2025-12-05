@@ -1,3 +1,4 @@
+use crate::IcDbmsResult;
 use crate::dbms::table::{ColumnDef, TableSchema};
 use crate::dbms::value::Value;
 use crate::prelude::Filter;
@@ -35,6 +36,9 @@ pub trait InsertRecord: Sized + Clone {
     type Record: TableRecord;
     /// The table schema associated with this record.
     type Schema: TableSchema<Record = Self::Record>;
+
+    /// Creates an insert record from a list of column [`Value`]s.
+    fn from_values(values: &[(ColumnDef, Value)]) -> IcDbmsResult<Self>;
 
     /// Converts the record into a list of column [`Value`]s for insertion.
     fn into_values(self) -> Vec<(ColumnDef, Value)>;

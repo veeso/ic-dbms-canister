@@ -55,6 +55,22 @@ impl TransactionSession {
         Ok(transaction)
     }
 
+    /// Removes and returns the [`Transaction`] associated with the given [`TransactionId`].
+    ///
+    /// This is usually done when committing a transaction.
+    pub fn take_transaction(
+        &mut self,
+        transaction_id: &TransactionId,
+    ) -> IcDbmsResult<Transaction> {
+        let transaction = self
+            .transactions
+            .remove(transaction_id)
+            .ok_or(IcDbmsError::Query(QueryError::TransactionNotFound))?;
+        self.owners.remove(transaction_id);
+
+        Ok(transaction)
+    }
+
     /// Closes the transaction associated with the given [`TransactionId`].
     pub fn close_transaction(&mut self, transaction_id: &TransactionId) {
         self.transactions.remove(transaction_id);
@@ -101,6 +117,22 @@ mod tests {
         assert!(!session.has_transaction(&transaction_id, alice()));
         let transaction = session.get_transaction_mut(&transaction_id);
         assert!(transaction.is_err());
+        assert!(!session.owners.contains_key(&transaction_id));
+        assert!(!session.transactions.contains_key(&transaction_id));
+    }
+
+    #[test]
+    fn test_should_take_transaction() {
+        let mut session = TransactionSession::default();
+        let transaction_id = session.begin_transaction(alice());
+
+        let _transaction = session
+            .take_transaction(&transaction_id)
+            .expect("failed to take tx");
+
+        assert!(!session.has_transaction(&transaction_id, alice()));
+        let transaction_after_take = session.get_transaction(&transaction_id);
+        assert!(transaction_after_take.is_err());
         assert!(!session.owners.contains_key(&transaction_id));
         assert!(!session.transactions.contains_key(&transaction_id));
     }

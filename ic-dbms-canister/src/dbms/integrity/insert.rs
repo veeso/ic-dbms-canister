@@ -123,12 +123,12 @@ mod tests {
 
     use super::*;
     use crate::dbms::types::DateTime;
-    use crate::tests::{Message, Post, TestIntegrityValidator, User, load_fixtures};
+    use crate::tests::{Message, Post, TestDatabaseSchema, User, load_fixtures};
 
     #[test]
     fn test_should_not_pass_check_for_pk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         let values = User::columns()
             .iter()
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn test_should_pass_check_for_pk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         // no conflict case
         let values = User::columns()
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_should_not_pass_check_for_fk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn test_should_pass_check_for_fk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_should_not_pass_non_nullable_field_check() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn test_should_pass_non_nullable_field_check() {
         load_fixtures();
-        let dbms = Database::oneshot(TestIntegrityValidator);
+        let dbms = Database::oneshot(TestDatabaseSchema);
 
         let values = Message::columns()
             .iter()

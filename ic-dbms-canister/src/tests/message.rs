@@ -1,6 +1,5 @@
 use ic_dbms_macros::Encode;
 
-use crate::IcDbmsError;
 use crate::dbms::table::{ColumnDef, ForeignKeyDef, TableColumns, ValuesSource};
 use crate::dbms::types::{DataTypeKind, DateTime, Nullable, Text, Uint32};
 use crate::dbms::value::Value;
@@ -9,6 +8,7 @@ use crate::prelude::{
     Filter, ForeignFetcher, InsertRecord, Query, QueryError, TableRecord, TableSchema, UpdateRecord,
 };
 use crate::tests::{User, UserRecord, self_reference_values};
+use crate::{IcDbmsError, IcDbmsResult};
 
 /// A simple message struct for testing purposes.
 #[derive(Debug, Encode, Clone, PartialEq, Eq)]
@@ -288,6 +288,63 @@ impl TableRecord for MessageRecord {
 impl InsertRecord for MessageInsertRequest {
     type Record = MessageRecord;
     type Schema = Message;
+
+    fn from_values(values: &[(ColumnDef, Value)]) -> IcDbmsResult<Self> {
+        let mut id: Option<Uint32> = None;
+        let mut text: Option<Text> = None;
+        let mut sender_id: Option<Uint32> = None;
+        let mut recipient_id: Option<Uint32> = None;
+        let mut read_at: Option<Nullable<DateTime>> = None;
+
+        for (column, value) in values {
+            match column.name {
+                "id" => {
+                    if let Value::Uint32(v) = value {
+                        id = Some(*v);
+                    }
+                }
+                "text" => {
+                    if let Value::Text(v) = value {
+                        text = Some(v.clone());
+                    }
+                }
+                "sender_id" => {
+                    if let Value::Uint32(v) = value {
+                        sender_id = Some(*v);
+                    }
+                }
+                "recipient_id" => {
+                    if let Value::Uint32(v) = value {
+                        recipient_id = Some(*v);
+                    }
+                }
+                "read_at" => {
+                    if let Value::DateTime(v) = value {
+                        read_at = Some(Nullable::Value(*v));
+                    } else if let Value::Null = value {
+                        read_at = Some(Nullable::Null);
+                    }
+                }
+                _ => { /* Ignore unknown columns */ }
+            }
+        }
+
+        Ok(Self {
+            id: id.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "id",
+            )))?,
+            text: text.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "text",
+            )))?,
+            sender_id: sender_id.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "sender_id",
+            )))?,
+            recipient_id: recipient_id.ok_or(IcDbmsError::Query(
+                QueryError::MissingNonNullableField("recipient_id"),
+            ))?,
+            read_at: read_at.unwrap_or(Nullable::Null),
+        })
+    }
 
     fn into_values(self) -> Vec<(ColumnDef, Value)> {
         vec![

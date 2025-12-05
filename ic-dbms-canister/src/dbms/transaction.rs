@@ -5,20 +5,47 @@ mod session;
 
 pub use self::overlay::DatabaseOverlay;
 pub use self::session::{TRANSACTION_SESSION, TransactionId, TransactionSession};
+use crate::IcDbmsResult;
+use crate::dbms::table::ColumnDef;
+use crate::dbms::value::Value;
+use crate::prelude::TableSchema;
 
 /// A transaction represents a sequence of operations performed as a single logical unit of work.
-#[derive(Debug, Default, Clone)]
-pub struct Transaction(DatabaseOverlay);
+#[derive(Debug, Default)]
+pub struct Transaction {
+    /// Stack of operations performed in this transaction.
+    ops: Vec<TransactionOp>,
+    /// Overlay to track uncommitted changes.
+    overlay: DatabaseOverlay,
+}
 
 impl Transaction {
+    /// Insert a new `insert` operation into the transaction.
+    pub fn insert<T>(&mut self, values: Vec<(ColumnDef, Value)>) -> IcDbmsResult<()>
+    where
+        T: TableSchema,
+    {
+        self.overlay.insert::<T>(values.clone())?;
+        self.ops.push(TransactionOp::Insert {
+            table: T::table_name(),
+            values,
+        });
+        Ok(())
+    }
+
+    /// Iterate over the operations performed in this transaction.
+    pub fn operations(&self) -> &Vec<TransactionOp> {
+        &self.ops
+    }
+
     /// Get a reference to the [`DatabaseOverlay`] associated with this transaction.
     pub fn overlay(&self) -> &DatabaseOverlay {
-        &self.0
+        &self.overlay
     }
 
     /// Get a mutable reference to the [`DatabaseOverlay`] associated with this transaction.
     pub fn overlay_mut(&mut self) -> &mut DatabaseOverlay {
-        &mut self.0
+        &mut self.overlay
     }
 }
 
@@ -27,4 +54,13 @@ impl Transaction {
 pub enum TransactionError {
     #[error("No active transaction")]
     NoActiveTransaction,
+}
+
+/// An enum representing the different types of operations that can be performed within a transaction.
+#[derive(Debug)]
+pub enum TransactionOp {
+    Insert {
+        table: &'static str,
+        values: Vec<(ColumnDef, Value)>,
+    },
 }

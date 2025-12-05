@@ -133,6 +133,7 @@ impl Encode for SchemaRegistry {
 mod tests {
 
     use super::*;
+    use crate::IcDbmsResult;
     use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
     use crate::prelude::{InsertRecord, NoForeignFetcher, UpdateRecord};
     use crate::tests::User;
@@ -243,6 +244,10 @@ mod tests {
     impl InsertRecord for AnotherTableInsert {
         type Record = AnotherTableRecord;
         type Schema = AnotherTable;
+
+        fn from_values(_values: &[(ColumnDef, crate::dbms::value::Value)]) -> IcDbmsResult<Self> {
+            Ok(AnotherTableInsert)
+        }
 
         fn into_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
             vec![]

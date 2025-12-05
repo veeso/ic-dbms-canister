@@ -1,10 +1,11 @@
 use ic_dbms_macros::Encode;
 
+use crate::IcDbmsError;
 use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, TableSchema, ValuesSource};
 use crate::dbms::types::{DataTypeKind, Text, Uint32};
 use crate::dbms::value::Value;
 use crate::memory::{Encode, SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{Filter, InsertRecord, NoForeignFetcher, UpdateRecord};
+use crate::prelude::{Filter, InsertRecord, NoForeignFetcher, QueryError, UpdateRecord};
 
 /// A simple user struct for testing purposes.
 #[derive(Debug, Encode, Clone, PartialEq, Eq)]
@@ -34,6 +35,36 @@ pub struct UserUpdateRequest {
 impl InsertRecord for UserInsertRequest {
     type Record = UserRecord;
     type Schema = User;
+
+    fn from_values(values: &[(ColumnDef, Value)]) -> crate::IcDbmsResult<Self> {
+        let mut id = None;
+        let mut name = None;
+
+        for (col_def, value) in values {
+            match col_def.name {
+                "id" => {
+                    if let Value::Uint32(v) = value {
+                        id = Some(*v);
+                    }
+                }
+                "name" => {
+                    if let Value::Text(v) = value {
+                        name = Some(v.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(UserInsertRequest {
+            id: id.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "id",
+            )))?,
+            name: name.ok_or(IcDbmsError::Query(QueryError::MissingNonNullableField(
+                "name",
+            )))?,
+        })
+    }
 
     fn into_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
         vec![
