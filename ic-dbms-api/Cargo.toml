@@ -1,5 +1,5 @@
 [package]
-name = "ic-dbms-types"
+name = "ic-dbms-api"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -8,8 +8,8 @@ license = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
 repository = { workspace = true }
-documentation = "https://docs.rs/ic-dbms-types/"
-description = "Types for using the ic-dbms-canister in external canisters."
+documentation = "https://docs.rs/ic-dbms-api/"
+description = "Public API types for ic-dbms-canister. This crate may be used by other canisters to interact with an ic-dbms-canister."
 include = [
   "examples/**/*",
   "src/**/*",

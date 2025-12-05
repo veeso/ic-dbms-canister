@@ -1,5 +1,8 @@
 //! Re-exports all the most commonly used items from this crate.
 
+// export all the types from ic-dbms-api
+pub use ic_dbms_api::prelude::*;
+
 pub use crate::dbms::Database;
 pub use crate::dbms::foreign_fetcher::{ForeignFetcher, NoForeignFetcher};
 pub use crate::dbms::integrity::InsertIntegrityValidator;

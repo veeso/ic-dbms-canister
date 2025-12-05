@@ -25,10 +25,10 @@ The user can just define the data entity by defining the tables
 #[derive(Table)]
 struct User {
     #[primary_key]
-    id: Int64,
+    id: Uint64,
     name: Text,
     email: Text,
-    age: Nullable<Int32>,
+    age: Nullable<Uint32>,
 }
 ```
 
@@ -42,18 +42,18 @@ You can also define relationships between tables:
 #[derive(Table)]
 struct Post {
     #[primary_key]
-    id: Int64,
+    id: Uint64,
     title: Text,
     content: Text,
     #[foreign_key(table = "User", column = "id")]
-    author_id: Int64,
+    author_id: Uint64,
 }
 ```
 
 And once you have defined all your tables, you can instantiate the database canister:
 
 ```rust
-ic_dbms_canister!(User, Post, Comment);
+ic_dbms_canister!(User, Post);
 ```
 
 And you will have a fully functional database canister with all the CRUD operations implemented for you.
@@ -66,10 +66,11 @@ todo...
 
 - [x] Define tables with common attributes
 - [x] CRUD operations
-- [x] Complex queries with filtering, sorting and pagination
+- [x] Complex queries with filtering and pagination
 - [x] Relationships between tables with foreign keys
 - [x] Transactions with commit and rollback
 - [x] Access Control Lists (ACL) to restrict access to the database
+- [ ] JOIN operations between tables (coming soon)
 - [ ] Migrations to update the database schema without losing data (coming soon)
 - [ ] Indexes on columns to optimize queries (coming soon)
 
