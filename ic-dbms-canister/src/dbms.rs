@@ -820,6 +820,40 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_should_rollback_transaction() {
+        load_fixtures();
+
+        // create a transaction
+        let transaction_id =
+            TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
+        let mut dbms = Database::from_transaction(TestDatabaseSchema, transaction_id.clone());
+        let new_user = UserInsertRequest {
+            id: Uint32(300u32),
+            name: Text("RollbackUser".to_string()),
+        };
+        let result = dbms.insert::<User>(new_user);
+        assert!(result.is_ok());
+
+        // rollback transaction
+        let rollback_result = dbms.rollback();
+        assert!(rollback_result.is_ok());
+
+        // user should not be visible
+        let oneshot_dbms = Database::oneshot(TestDatabaseSchema);
+        let query = Query::<User>::builder()
+            .and_where(Filter::eq("id", Value::Uint32(300u32.into())))
+            .build();
+        let users = oneshot_dbms.select(query).expect("failed to select users");
+        assert_eq!(users.len(), 0);
+
+        // transaction should have been removed
+        TRANSACTION_SESSION.with_borrow(|ts| {
+            let tx_res = ts.get_transaction(&transaction_id);
+            assert!(tx_res.is_err());
+        });
+    }
+
     fn init_user_table() {
         SCHEMA_REGISTRY
             .with_borrow_mut(|sr| sr.register_table::<User>())
