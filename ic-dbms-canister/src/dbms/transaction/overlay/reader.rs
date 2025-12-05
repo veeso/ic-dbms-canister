@@ -83,7 +83,7 @@ mod tests {
         load_fixtures();
         let table_overlay = TableOverlay::default();
         let registry = registry();
-        let table_reader = registry.read();
+        let table_reader = registry.read::<User>();
 
         let mut overlay_reader = DatabaseOverlayReader::new(&table_overlay, table_reader);
         // collect all
@@ -120,7 +120,7 @@ mod tests {
         table_overlay.delete(Value::Uint32(1.into()));
         table_overlay.delete(Value::Uint32(9.into()));
 
-        let table_reader = registry.read();
+        let table_reader = registry.read::<User>();
         let mut overlay_reader = DatabaseOverlayReader::new(&table_overlay, table_reader);
         // collect all
         let mut all = vec![];
@@ -185,7 +185,7 @@ mod tests {
         table_overlay.insert(first_pk.clone(), new_user_1.clone());
         table_overlay.insert(second_pk.clone(), new_user_2.clone());
 
-        let table_reader = registry.read();
+        let table_reader = registry.read::<User>();
         let mut overlay_reader = DatabaseOverlayReader::new(&table_overlay, table_reader);
         // collect all
         let mut all = vec![];
@@ -246,7 +246,7 @@ mod tests {
         table_overlay.insert(first_pk.clone(), new_user_1.clone());
         table_overlay.delete(first_pk.clone());
 
-        let table_reader = registry.read();
+        let table_reader = registry.read::<User>();
         let mut overlay_reader = DatabaseOverlayReader::new(&table_overlay, table_reader);
         // collect all
         let mut all = vec![];
@@ -267,7 +267,7 @@ mod tests {
         let updates = vec![("name".to_string(), Value::Text(updated_name.clone().into()))];
         table_overlay.update(pk_to_update.clone(), updates);
 
-        let table_reader = registry.read();
+        let table_reader = registry.read::<User>();
         let mut overlay_reader = DatabaseOverlayReader::new(&table_overlay, table_reader);
         // collect all
         let mut all = vec![];
@@ -295,7 +295,7 @@ mod tests {
         assert!(names.contains(&updated_name));
     }
 
-    fn registry() -> TableRegistry<User> {
+    fn registry() -> TableRegistry {
         let user_pages = SCHEMA_REGISTRY
             .with_borrow(|sr| sr.table_registry_page::<User>())
             .expect("failed to register `User` table");

@@ -353,7 +353,7 @@ pub fn load_fixtures() {
         .with_borrow_mut(|sr| sr.register_table::<Message>())
         .expect("failed to register `Message` table");
 
-    let mut messages_table: TableRegistry<Message> =
+    let mut messages_table: TableRegistry =
         TableRegistry::load(messages_pages).expect("failed to load `Message` table registry");
 
     // insert users

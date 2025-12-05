@@ -4,8 +4,6 @@ mod raw_record;
 mod table_reader;
 mod write_at;
 
-use std::marker::PhantomData;
-
 use self::free_segments_ledger::FreeSegmentsLedger;
 use self::page_ledger::PageLedger;
 pub use self::table_reader::{NextRecord, TableReader};
@@ -26,23 +24,15 @@ const RAW_RECORD_HEADER_SIZE: MSize = 3;
 /// The CRUD operations provided by the table registry do NOT perform any logical checks,
 /// but just allow to read/write records from/to memory.
 /// So CRUD checks must be performed by a higher layer, prior to calling these methods.
-pub struct TableRegistry<E>
-where
-    E: Encode,
-{
-    _marker: PhantomData<E>,
+pub struct TableRegistry {
     free_segments_ledger: FreeSegmentsLedger,
     page_ledger: PageLedger,
 }
 
-impl<E> TableRegistry<E>
-where
-    E: Encode,
-{
+impl TableRegistry {
     /// Loads the table registry from memory
     pub fn load(table_pages: TableRegistryPage) -> MemoryResult<Self> {
         Ok(Self {
-            _marker: PhantomData,
             free_segments_ledger: FreeSegmentsLedger::load(table_pages.free_segments_page)?,
             page_ledger: PageLedger::load(table_pages.pages_list_page)?,
         })
@@ -51,7 +41,7 @@ where
     /// Inserts a new record into the table registry.
     ///
     /// NOTE: this function does NOT make any logical checks on the record being inserted.
-    pub fn insert(&mut self, record: E) -> MemoryResult<()> {
+    pub fn insert(&mut self, record: impl Encode) -> MemoryResult<()> {
         // get position to write the record
         let raw_record = RawRecord::new(record);
         let write_at = self.get_write_position(&raw_record)?;
@@ -67,14 +57,22 @@ where
     /// Creates a [`TableReader`] to read records from the table registry.
     ///
     /// Use [`TableReader::try_next`] to read records one by one.
-    pub fn read(&self) -> TableReader<'_, E> {
+    pub fn read<E>(&self) -> TableReader<'_, E>
+    where
+        E: Encode,
+    {
         TableReader::new(&self.page_ledger)
     }
 
     /// Deletes a record at the given page and offset.
     ///
     /// The space occupied by the record is marked as free and zeroed.
-    pub fn delete(&mut self, record: E, page: Page, offset: PageOffset) -> MemoryResult<()> {
+    pub fn delete(
+        &mut self,
+        record: impl Encode,
+        page: Page,
+        offset: PageOffset,
+    ) -> MemoryResult<()> {
         let raw_record = RawRecord::new(record);
 
         // zero the record in memory
@@ -93,8 +91,8 @@ where
     /// 2. If the new record does not fit, delete the old record and insert the new record.
     pub fn update(
         &mut self,
-        new_record: E,
-        old_record: E,
+        new_record: impl Encode,
+        old_record: impl Encode,
         old_page: Page,
         old_offset: PageOffset,
     ) -> MemoryResult<()> {
@@ -108,7 +106,12 @@ where
     /// Update a [`RawRecord`] in place at the given page and offset.
     ///
     /// This must be used IF AND ONLY if the new record has the SAME size as the old record.
-    fn update_in_place(&mut self, record: E, page: Page, offset: PageOffset) -> MemoryResult<()> {
+    fn update_in_place(
+        &mut self,
+        record: impl Encode,
+        page: Page,
+        offset: PageOffset,
+    ) -> MemoryResult<()> {
         let raw_record = RawRecord::new(record);
         MEMORY_MANAGER.with_borrow_mut(|mm| mm.write_at(page, offset, &raw_record))
     }
@@ -118,8 +121,8 @@ where
     /// The old record is deleted and the new record is inserted.
     fn update_by_realloc(
         &mut self,
-        new_record: E,
-        old_record: E,
+        new_record: impl Encode,
+        old_record: impl Encode,
         old_page: Page,
         old_offset: PageOffset,
     ) -> MemoryResult<()> {
@@ -131,7 +134,10 @@ where
     }
 
     /// Gets the position where to write a record of the given size.
-    fn get_write_position(&mut self, record: &RawRecord<E>) -> MemoryResult<WriteAt> {
+    fn get_write_position<E>(&mut self, record: &RawRecord<E>) -> MemoryResult<WriteAt>
+    where
+        E: Encode,
+    {
         // check if there is a free segment that can hold the record
         if let Some(segment) = self.free_segments_ledger.find_reusable_segment(record) {
             return Ok(WriteAt::ReusedSegment(segment));
@@ -147,7 +153,10 @@ where
     ///
     /// - If the record was a [`WriteAt::ReusedSegment`], the free segment is marked as used.
     /// - If the record was a [`WriteAt::End`], the page ledger is updated.
-    fn post_write(&mut self, write_at: WriteAt, record: &RawRecord<E>) -> MemoryResult<()> {
+    fn post_write<E>(&mut self, write_at: WriteAt, record: &RawRecord<E>) -> MemoryResult<()>
+    where
+        E: Encode,
+    {
         match write_at {
             WriteAt::ReusedSegment(free_segment) => {
                 // mark segment as used
@@ -182,7 +191,7 @@ mod tests {
             free_segments_page,
         };
 
-        let registry: MemoryResult<TableRegistry<User>> = TableRegistry::load(table_pages);
+        let registry: MemoryResult<TableRegistry> = TableRegistry::load(table_pages);
         assert!(registry.is_ok());
     }
 
@@ -277,7 +286,7 @@ mod tests {
 
         // find where it was written
         let mut reader = registry.read();
-        let next_record = reader
+        let next_record: NextRecord<User> = reader
             .try_next()
             .expect("failed to read")
             .expect("no record");
@@ -291,7 +300,7 @@ mod tests {
         assert!(registry.delete(record, page, offset).is_ok());
 
         // should have been deleted
-        let mut reader = registry.read();
+        let mut reader = registry.read::<User>();
         assert!(reader.try_next().expect("failed to read").is_none());
 
         // should have a free segment
@@ -333,7 +342,7 @@ mod tests {
             .expect("failed to insert");
 
         // find where it was written
-        let mut reader = registry.read();
+        let mut reader = registry.read::<User>();
         let next_record = reader
             .try_next()
             .expect("failed to read")
@@ -349,7 +358,7 @@ mod tests {
         );
 
         // read back the record
-        let mut reader = registry.read();
+        let mut reader = registry.read::<User>();
         let next_record = reader
             .try_next()
             .expect("failed to read")
@@ -387,7 +396,7 @@ mod tests {
             .expect("failed to insert extra user");
 
         // find where it was written
-        let mut reader = registry.read();
+        let mut reader = registry.read::<User>();
         let old_record = reader
             .try_next()
             .expect("failed to read")
@@ -403,7 +412,7 @@ mod tests {
         );
 
         // read back the record
-        let mut reader = registry.read();
+        let mut reader = registry.read::<User>();
 
         // find extra record first
         let _ = reader
@@ -419,7 +428,7 @@ mod tests {
         assert_eq!(updated_record.record, new_record);
     }
 
-    fn registry() -> TableRegistry<User> {
+    fn registry() -> TableRegistry {
         let page_ledger_page = MEMORY_MANAGER
             .with_borrow_mut(|mm| mm.allocate_page())
             .expect("failed to get page");

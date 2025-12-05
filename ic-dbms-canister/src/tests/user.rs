@@ -194,7 +194,7 @@ pub fn load_fixtures() {
         .with_borrow_mut(|sr| sr.register_table::<User>())
         .expect("failed to register `User` table");
 
-    let mut user_table: TableRegistry<User> =
+    let mut user_table: TableRegistry =
         TableRegistry::load(user_pages).expect("failed to load `User` table registry");
 
     // insert users

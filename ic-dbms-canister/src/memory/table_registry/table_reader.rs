@@ -324,7 +324,7 @@ mod tests {
         ));
     }
 
-    fn mock_table_registry(entries: u32) -> TableRegistry<User> {
+    fn mock_table_registry(entries: u32) -> TableRegistry {
         let page_ledger_page = MEMORY_MANAGER
             .with_borrow_mut(|mm| mm.allocate_page())
             .expect("failed to get page");
@@ -349,7 +349,7 @@ mod tests {
         registry
     }
 
-    fn mocked<'a>(table_registry: &'a TableRegistry<User>) -> TableReader<'a, User> {
+    fn mocked<'a>(table_registry: &'a TableRegistry) -> TableReader<'a, User> {
         TableReader::new(&table_registry.page_ledger)
     }
 }

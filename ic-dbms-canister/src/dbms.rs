@@ -83,7 +83,7 @@ impl Database {
         // load table registry
         let table_registry = self.load_table_registry::<T>()?;
         // read table
-        let table_reader = table_registry.read();
+        let table_reader = table_registry.read::<T>();
         // get database overlay
         let mut table_overlay = if self.transaction.is_some() {
             self.overlay()?
@@ -142,6 +142,8 @@ impl Database {
 
         if self.transaction.is_some() {
             // TODO: handle insert tx; should we use `dyn TableSchema` here?
+            // The idea is to change the `insert` of table registry to take impl Encode instead of T.
+            // At this point we should be able to use dyn table schema. Revalidate by using into_values and clone.
             todo!();
         } else {
             // insert directly into the database
@@ -315,7 +317,7 @@ impl Database {
     }
 
     /// Load the table registry for the given table schema.
-    fn load_table_registry<T>(&self) -> IcDbmsResult<TableRegistry<T>>
+    fn load_table_registry<T>(&self) -> IcDbmsResult<TableRegistry>
     where
         T: TableSchema,
     {
