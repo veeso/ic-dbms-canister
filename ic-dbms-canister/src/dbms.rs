@@ -6,8 +6,8 @@ pub mod transaction;
 
 use ic_dbms_api::prelude::{
     ColumnDef, Database, DeleteBehavior, Filter, ForeignFetcher, IcDbmsError, IcDbmsResult,
-    InsertRecord, Query, QueryError, TableColumns, TableError, TableRecord, TableSchema,
-    TransactionError, TransactionId, UpdateRecord, Value, ValuesSource,
+    InsertRecord, OrderDirection, Query, QueryError, TableColumns, TableError, TableRecord,
+    TableSchema, TransactionError, TransactionId, UpdateRecord, Value, ValuesSource,
 };
 
 use crate::dbms::transaction::{DatabaseOverlay, Transaction, TransactionOp};
@@ -251,6 +251,46 @@ impl IcDbmsDatabase {
 
         TableRegistry::load(registry_pages).map_err(IcDbmsError::from)
     }
+
+    /// Sorts the query results based on the specified column and order direction.
+    ///
+    /// We only sort values which have [`ValuesSource::This`].
+    #[allow(clippy::type_complexity)]
+    fn sort_query_results(
+        &self,
+        results: &mut [Vec<(ValuesSource, Vec<(ColumnDef, Value)>)>],
+        column: &'static str,
+        direction: OrderDirection,
+    ) {
+        results.sort_by(|a, b| {
+            let a_value = a
+                .iter()
+                .find(|(source, _)| *source == ValuesSource::This)
+                .and_then(|(_, cols)| {
+                    cols.iter()
+                        .find(|(col_def, _)| col_def.name == column)
+                        .map(|(_, value)| value)
+                });
+            let b_value = b
+                .iter()
+                .find(|(source, _)| *source == ValuesSource::This)
+                .and_then(|(_, cols)| {
+                    cols.iter()
+                        .find(|(col_def, _)| col_def.name == column)
+                        .map(|(_, value)| value)
+                });
+
+            match (a_value, b_value) {
+                (Some(a_val), Some(b_val)) => match direction {
+                    OrderDirection::Ascending => a_val.cmp(b_val),
+                    OrderDirection::Descending => b_val.cmp(a_val),
+                },
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        });
+    }
 }
 
 impl Database for IcDbmsDatabase {
@@ -300,17 +340,20 @@ impl Database for IcDbmsDatabase {
             }
             // get queried fields
             let values = self.select_queried_fields::<T>(values, &query)?;
-            // convert to record
-            let record = T::Record::from_values(values);
             // push to results
-            results.push(record);
+            results.push(values);
             // check whether reached limit
             if query.limit.is_some_and(|limit| results.len() >= limit) {
                 break;
             }
         }
 
-        Ok(results)
+        // sort results if needed and map to records
+        for (column, direction) in query.order_by {
+            self.sort_query_results(&mut results, column, direction);
+        }
+
+        Ok(results.into_iter().map(T::Record::from_values).collect())
     }
 
     /// Executes an INSERT query.
@@ -846,6 +889,26 @@ mod tests {
                 .0,
             "Bob"
         );
+    }
+
+    #[test]
+    fn test_should_select_users_sorted_by_name_descending() {
+        load_fixtures();
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
+        let query = Query::<User>::builder().all().order_by_desc("name").build();
+        let users = dbms.select(query).expect("failed to select users");
+
+        let mut sorted_usernames = USERS_FIXTURES.to_vec();
+        sorted_usernames.sort_by(|a, b| b.cmp(a)); // descending
+
+        assert_eq!(users.len(), USERS_FIXTURES.len());
+        // check if all users all loaded in sorted order
+        for (i, user) in users.iter().enumerate() {
+            assert_eq!(
+                user.name.as_ref().expect("should have name").0,
+                sorted_usernames[i]
+            );
+        }
     }
 
     #[test]
