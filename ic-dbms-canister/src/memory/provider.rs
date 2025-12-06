@@ -76,6 +76,7 @@ impl MemoryProvider for IcMemoryProvider {
 
 /// An implementation of [`MemoryProvider`] that uses heap memory for testing purposes.
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct HeapMemoryProvider {
     memory: Vec<u8>,
 }

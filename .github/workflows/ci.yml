@@ -31,7 +31,7 @@ jobs:
 
       - name: install ic-wasm
         run: |
-          wget https://github.com/dfinity/ic-wasm/releases/download/0.9.8/ic-wasm-linux64 -O /usr/local/bin/ic-wasm
+          wget https://github.com/dfinity/ic-wasm/releases/download/0.9.9/ic-wasm-linux64 -O /usr/local/bin/ic-wasm
           chmod +x /usr/local/bin/ic-wasm
 
       - name: install candid-extractor
@@ -53,6 +53,13 @@ jobs:
           toolchain: nightly
           components: rustfmt
 
+      - name: Install Rust (wasm32-unknown-unknown target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          components: rustfmt
+
       - name: check rust code style
         run: |
           just check_code
@@ -60,3 +67,7 @@ jobs:
       - name: test
         run: |
           just test_all
+
+      - name: build all
+        run: |
+          just build_all

@@ -1,5 +1,5 @@
 [workspace]
-members = ["ic-dbms-api", "ic-dbms-canister", "ic-dbms-macros"]
+members = ["example", "ic-dbms-api", "ic-dbms-canister", "ic-dbms-macros"]
 resolver = "2"
 
 [workspace.package]
