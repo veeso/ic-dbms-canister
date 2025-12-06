@@ -1,7 +1,6 @@
-use crate::IcDbmsResult;
 use crate::dbms::table::{ColumnDef, TableSchema};
 use crate::dbms::value::Value;
-use crate::prelude::Filter;
+use crate::prelude::{Filter, IcDbmsResult};
 
 pub type TableName = &'static str;
 pub type TableColumns = Vec<(ValuesSource, Vec<(ColumnDef, Value)>)>;

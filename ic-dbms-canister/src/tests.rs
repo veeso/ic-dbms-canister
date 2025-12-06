@@ -4,6 +4,8 @@ mod message;
 mod post;
 mod user;
 
+use ic_dbms_api::prelude::{ColumnDef, Database as _, Value, ValuesSource};
+
 #[allow(unused_imports)]
 pub use self::message::{
     MESSAGES_FIXTURES, Message, MessageInsertRequest, MessageRecord, MessageUpdateRequest,
@@ -12,9 +14,7 @@ pub use self::message::{
 pub use self::post::{POSTS_FIXTURES, Post, PostInsertRequest, PostRecord, PostUpdateRequest};
 #[allow(unused_imports)]
 pub use self::user::{USERS_FIXTURES, User, UserInsertRequest, UserRecord, UserUpdateRequest};
-use crate::dbms::Database;
-use crate::dbms::table::{ColumnDef, ValuesSource};
-use crate::dbms::value::Value;
+use crate::dbms::IcDbmsDatabase;
 use crate::prelude::{
     DatabaseSchema, InsertIntegrityValidator, InsertRecord as _, QueryError, TableSchema as _,
     UpdateRecord as _,
@@ -71,10 +71,10 @@ impl DatabaseSchema for TestDatabaseSchema {
 
     fn insert(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         record_values: &[(ColumnDef, Value)],
-    ) -> crate::IcDbmsResult<()> {
+    ) -> ic_dbms_api::prelude::IcDbmsResult<()> {
         if table_name == User::table_name() {
             let insert_request = UserInsertRequest::from_values(record_values)?;
             dbms.insert::<User>(insert_request)
@@ -85,19 +85,19 @@ impl DatabaseSchema for TestDatabaseSchema {
             let insert_request = MessageInsertRequest::from_values(record_values)?;
             dbms.insert::<Message>(insert_request)
         } else {
-            Err(crate::IcDbmsError::Query(QueryError::TableNotFound(
-                table_name,
-            )))
+            Err(ic_dbms_api::prelude::IcDbmsError::Query(
+                QueryError::TableNotFound(table_name),
+            ))
         }
     }
 
     fn delete(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
-        delete_behavior: crate::dbms::query::DeleteBehavior,
-        filter: Option<crate::prelude::Filter>,
-    ) -> crate::IcDbmsResult<u64> {
+        delete_behavior: ic_dbms_api::prelude::DeleteBehavior,
+        filter: Option<ic_dbms_api::prelude::Filter>,
+    ) -> ic_dbms_api::prelude::IcDbmsResult<u64> {
         if table_name == User::table_name() {
             dbms.delete::<User>(delete_behavior, filter)
         } else if table_name == Post::table_name() {
@@ -105,19 +105,19 @@ impl DatabaseSchema for TestDatabaseSchema {
         } else if table_name == Message::table_name() {
             dbms.delete::<Message>(delete_behavior, filter)
         } else {
-            Err(crate::IcDbmsError::Query(QueryError::TableNotFound(
-                table_name,
-            )))
+            Err(ic_dbms_api::prelude::IcDbmsError::Query(
+                QueryError::TableNotFound(table_name),
+            ))
         }
     }
 
     fn update(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         patch_values: &[(ColumnDef, Value)],
         filter: Option<crate::prelude::Filter>,
-    ) -> crate::IcDbmsResult<u64> {
+    ) -> ic_dbms_api::prelude::IcDbmsResult<u64> {
         if table_name == User::table_name() {
             let update_request = UserUpdateRequest::from_values(patch_values, filter);
             dbms.update::<User>(update_request)
@@ -128,18 +128,18 @@ impl DatabaseSchema for TestDatabaseSchema {
             let update_request = MessageUpdateRequest::from_values(patch_values, filter);
             dbms.update::<Message>(update_request)
         } else {
-            Err(crate::IcDbmsError::Query(QueryError::TableNotFound(
-                table_name,
-            )))
+            Err(ic_dbms_api::prelude::IcDbmsError::Query(
+                QueryError::TableNotFound(table_name),
+            ))
         }
     }
 
     fn validate_insert(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         record_values: &[(ColumnDef, Value)],
-    ) -> crate::IcDbmsResult<()> {
+    ) -> ic_dbms_api::prelude::IcDbmsResult<()> {
         if table_name == User::table_name() {
             InsertIntegrityValidator::<User>::new(dbms).validate(record_values)
         } else if table_name == Post::table_name() {
@@ -147,9 +147,9 @@ impl DatabaseSchema for TestDatabaseSchema {
         } else if table_name == Message::table_name() {
             InsertIntegrityValidator::<Message>::new(dbms).validate(record_values)
         } else {
-            Err(crate::IcDbmsError::Query(QueryError::TableNotFound(
-                table_name,
-            )))
+            Err(ic_dbms_api::prelude::IcDbmsError::Query(
+                QueryError::TableNotFound(table_name),
+            ))
         }
     }
 }

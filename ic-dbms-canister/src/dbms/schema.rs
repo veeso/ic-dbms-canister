@@ -1,8 +1,6 @@
-use crate::IcDbmsResult;
-use crate::dbms::Database;
-use crate::dbms::query::DeleteBehavior;
-use crate::dbms::table::ColumnDef;
-use crate::dbms::value::Value;
+use ic_dbms_api::prelude::{ColumnDef, DeleteBehavior, IcDbmsResult, Value};
+
+use crate::dbms::IcDbmsDatabase;
 use crate::prelude::Filter;
 
 /// This trait provides the schema operation for the current database.
@@ -27,7 +25,7 @@ pub trait DatabaseSchema {
     /// Use [`Database::insert`] internally to perform the operation.
     fn insert(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         record_values: &[(ColumnDef, Value)],
     ) -> IcDbmsResult<()>;
@@ -37,7 +35,7 @@ pub trait DatabaseSchema {
     /// Use [`Database::delete`] internally to perform the operation.
     fn delete(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         delete_behavior: DeleteBehavior,
         filter: Option<Filter>,
@@ -48,7 +46,7 @@ pub trait DatabaseSchema {
     /// Use [`Database::update`] internally to perform the operation.
     fn update(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         patch_values: &[(ColumnDef, Value)],
         filter: Option<Filter>,
@@ -59,7 +57,7 @@ pub trait DatabaseSchema {
     /// Use a [`crate::prelude::InsertIntegrityValidator`] to perform the validation.
     fn validate_insert(
         &self,
-        dbms: &Database,
+        dbms: &IcDbmsDatabase,
         table_name: &'static str,
         record_values: &[(ColumnDef, Value)],
     ) -> IcDbmsResult<()>;

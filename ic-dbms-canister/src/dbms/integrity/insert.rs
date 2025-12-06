@@ -1,15 +1,16 @@
-use crate::dbms::Database;
-use crate::dbms::table::{ColumnDef, ForeignKeyDef};
-use crate::dbms::value::Value;
+use ic_dbms_api::prelude::{
+    ColumnDef, Database as _, ForeignKeyDef, IcDbmsError, IcDbmsResult, Value,
+};
+
+use crate::dbms::IcDbmsDatabase;
 use crate::prelude::{Filter, ForeignFetcher, Query, QueryError, TableSchema};
-use crate::{IcDbmsError, IcDbmsResult};
 
 /// Integrity validator for insert operations.
 pub struct InsertIntegrityValidator<'a, T>
 where
     T: TableSchema,
 {
-    database: &'a Database,
+    database: &'a IcDbmsDatabase,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -18,7 +19,7 @@ where
     T: TableSchema,
 {
     /// Creates a new insert integrity validator.
-    pub fn new(dbms: &'a Database) -> Self {
+    pub fn new(dbms: &'a IcDbmsDatabase) -> Self {
         Self {
             database: dbms,
             _marker: std::marker::PhantomData,
@@ -121,14 +122,15 @@ where
 #[cfg(test)]
 mod tests {
 
+    use ic_dbms_api::prelude::DateTime;
+
     use super::*;
-    use crate::dbms::types::DateTime;
     use crate::tests::{Message, Post, TestDatabaseSchema, User, load_fixtures};
 
     #[test]
     fn test_should_not_pass_check_for_pk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let values = User::columns()
             .iter()
@@ -149,7 +151,7 @@ mod tests {
     #[test]
     fn test_should_pass_check_for_pk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         // no conflict case
         let values = User::columns()
@@ -169,7 +171,7 @@ mod tests {
     #[test]
     fn test_should_not_pass_check_for_fk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -197,7 +199,7 @@ mod tests {
     #[test]
     fn test_should_pass_check_for_fk_conflict() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -218,7 +220,7 @@ mod tests {
     #[test]
     fn test_should_not_pass_non_nullable_field_check() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let values = Post::columns()
             .iter()
@@ -245,7 +247,7 @@ mod tests {
     #[test]
     fn test_should_pass_non_nullable_field_check() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let values = Message::columns()
             .iter()

@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
-use crate::memory::error::DecodeError;
+use ic_dbms_api::prelude::DecodeError;
+
 use crate::memory::table_registry::RAW_RECORD_HEADER_SIZE;
 use crate::memory::table_registry::page_ledger::PageLedger;
 use crate::memory::table_registry::raw_record::{RAW_RECORD_HEADER_MAGIC_NUMBER, RawRecord};

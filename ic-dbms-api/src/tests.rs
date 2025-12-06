@@ -1,11 +1,12 @@
-use ic_dbms_api::prelude::{
-    ColumnDef, DataTypeKind, Encode, IcDbmsError, TableColumns, TableRecord, TableSchema, Text,
-    Uint32, Value, ValuesSource,
-};
 use ic_dbms_macros::Encode;
 
-use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{Filter, InsertRecord, NoForeignFetcher, QueryError, UpdateRecord};
+use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, TableSchema, ValuesSource};
+use crate::dbms::types::{DataTypeKind, Text, Uint32};
+use crate::dbms::value::Value;
+use crate::memory::Encode;
+use crate::prelude::{
+    Filter, IcDbmsError, InsertRecord, NoForeignFetcher, QueryError, UpdateRecord,
+};
 
 /// A simple user struct for testing purposes.
 #[derive(Debug, Encode, Clone, PartialEq, Eq)]
@@ -36,7 +37,7 @@ impl InsertRecord for UserInsertRequest {
     type Record = UserRecord;
     type Schema = User;
 
-    fn from_values(values: &[(ColumnDef, Value)]) -> ic_dbms_api::prelude::IcDbmsResult<Self> {
+    fn from_values(values: &[(ColumnDef, Value)]) -> crate::prelude::IcDbmsResult<Self> {
         let mut id = None;
         let mut name = None;
 
@@ -66,7 +67,7 @@ impl InsertRecord for UserInsertRequest {
         })
     }
 
-    fn into_values(self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
+    fn into_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
         vec![
             (Self::Schema::columns()[0], Value::Uint32(self.id)),
             (Self::Schema::columns()[1], Value::Text(self.name)),
@@ -112,7 +113,7 @@ impl UpdateRecord for UserUpdateRequest {
         }
     }
 
-    fn update_values(&self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
+    fn update_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
         let mut values = vec![];
         if let Some(id) = self.id {
             values.push((
@@ -123,7 +124,7 @@ impl UpdateRecord for UserUpdateRequest {
                     primary_key: true,
                     foreign_key: None,
                 },
-                ic_dbms_api::prelude::Value::Uint32(id),
+                crate::dbms::value::Value::Uint32(id),
             ));
         }
         if let Some(name) = &self.name {
@@ -135,7 +136,7 @@ impl UpdateRecord for UserUpdateRequest {
                     primary_key: false,
                     foreign_key: None,
                 },
-                ic_dbms_api::prelude::Value::Text(name.clone()),
+                crate::dbms::value::Value::Text(name.clone()),
             ));
         }
         values
@@ -161,12 +162,12 @@ impl TableRecord for UserRecord {
         for (col_def, value) in user_values.unwrap_or(&vec![]) {
             match col_def.name {
                 "id" => {
-                    if let ic_dbms_api::prelude::Value::Uint32(v) = value {
+                    if let crate::dbms::value::Value::Uint32(v) = value {
                         id = Some(*v);
                     }
                 }
                 "name" => {
-                    if let ic_dbms_api::prelude::Value::Text(v) = value {
+                    if let crate::dbms::value::Value::Text(v) = value {
                         name = Some(v.clone());
                     }
                 }
@@ -177,7 +178,7 @@ impl TableRecord for UserRecord {
         UserRecord { id, name }
     }
 
-    fn to_values(&self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
+    fn to_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
         Self::Schema::columns()
             .iter()
             .zip(vec![
@@ -236,34 +237,7 @@ impl TableSchema for User {
     }
 }
 
-pub const USERS_FIXTURES: &[&str] = &[
-    "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Judy",
-];
-
-/// Loads fixtures into the database for testing purposes.
-///
-/// # Panics
-///
-/// Panics if any operation fails.
-pub fn load_fixtures() {
-    // register tables
-    let user_pages = SCHEMA_REGISTRY
-        .with_borrow_mut(|sr| sr.register_table::<User>())
-        .expect("failed to register `User` table");
-
-    let mut user_table: TableRegistry =
-        TableRegistry::load(user_pages).expect("failed to load `User` table registry");
-
-    // insert users
-    for (id, user) in USERS_FIXTURES.iter().enumerate() {
-        let user = User {
-            id: Uint32(id as u32),
-            name: Text(user.to_string()),
-        };
-        user_table.insert(user).expect("failed to insert user");
-    }
-}
-
+#[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use super::*;

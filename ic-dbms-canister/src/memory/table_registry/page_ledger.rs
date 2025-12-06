@@ -38,7 +38,7 @@ impl PageLedger {
         let page_size = MEMORY_MANAGER.with_borrow(|mm| mm.page_size());
         // check if record can fit in a page
         if required_size > page_size {
-            return Err(crate::memory::error::MemoryError::DataTooLarge {
+            return Err(ic_dbms_api::prelude::MemoryError::DataTooLarge {
                 page_size,
                 requested: required_size,
             });
@@ -77,7 +77,7 @@ impl PageLedger {
         if let Some(page_record) = self.pages.pages.iter_mut().find(|pr| pr.page == page) {
             let record_size = record.size() as u64;
             if page_record.free < record_size {
-                return Err(crate::memory::error::MemoryError::DataTooLarge {
+                return Err(ic_dbms_api::prelude::MemoryError::DataTooLarge {
                     page_size: page_record.free,
                     requested: record_size,
                 });
@@ -87,7 +87,7 @@ impl PageLedger {
             return Ok(());
         }
 
-        Err(crate::memory::error::MemoryError::OutOfBounds)
+        Err(ic_dbms_api::prelude::MemoryError::OutOfBounds)
     }
 
     /// Returns the list of pages in the ledger.

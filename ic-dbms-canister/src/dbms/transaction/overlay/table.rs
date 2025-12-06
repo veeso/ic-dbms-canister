@@ -1,5 +1,4 @@
-use crate::dbms::table::ColumnDef;
-use crate::dbms::value::Value;
+use ic_dbms_api::prelude::{ColumnDef, Value};
 
 /// The table overlay tracks uncommitted changes for a specific table.
 #[derive(Debug, Default, Clone)]
@@ -106,8 +105,9 @@ impl TableOverlay {
 #[cfg(test)]
 mod tests {
 
+    use ic_dbms_api::prelude::DataTypeKind;
+
     use super::*;
-    use crate::dbms::types::DataTypeKind;
 
     #[test]
     fn test_should_get_op_pk() {

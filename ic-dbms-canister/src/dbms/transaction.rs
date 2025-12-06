@@ -3,12 +3,10 @@
 mod overlay;
 mod session;
 
+use ic_dbms_api::prelude::{ColumnDef, DeleteBehavior, IcDbmsResult, Value};
+
 pub use self::overlay::DatabaseOverlay;
-pub use self::session::{TRANSACTION_SESSION, TransactionId, TransactionSession};
-use crate::IcDbmsResult;
-use crate::dbms::query::DeleteBehavior;
-use crate::dbms::table::ColumnDef;
-use crate::dbms::value::Value;
+pub use self::session::{TRANSACTION_SESSION, TransactionSession};
 use crate::prelude::{Filter, TableSchema, UpdateRecord as _};
 
 /// A transaction represents a sequence of operations performed as a single logical unit of work.
@@ -93,13 +91,6 @@ impl Transaction {
     pub fn overlay_mut(&mut self) -> &mut DatabaseOverlay {
         &mut self.overlay
     }
-}
-
-/// An enum representing possible errors that can occur during transaction operations.
-#[derive(Debug, thiserror::Error)]
-pub enum TransactionError {
-    #[error("No active transaction")]
-    NoActiveTransaction,
 }
 
 /// An enum representing the different types of operations that can be performed within a transaction.

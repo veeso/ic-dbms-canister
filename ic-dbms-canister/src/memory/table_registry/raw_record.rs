@@ -1,4 +1,5 @@
-use crate::memory::error::DecodeError;
+use ic_dbms_api::prelude::DecodeError;
+
 use crate::memory::table_registry::RAW_RECORD_HEADER_SIZE;
 use crate::memory::{Encode, MSize, MemoryError};
 

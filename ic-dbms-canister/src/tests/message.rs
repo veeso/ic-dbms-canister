@@ -1,14 +1,14 @@
+use ic_dbms_api::prelude::{
+    ColumnDef, DataTypeKind, Database, DateTime, ForeignKeyDef, IcDbmsError, IcDbmsResult,
+    Nullable, TableColumns, Text, Uint32, Value, ValuesSource,
+};
 use ic_dbms_macros::Encode;
 
-use crate::dbms::table::{ColumnDef, ForeignKeyDef, TableColumns, ValuesSource};
-use crate::dbms::types::{DataTypeKind, DateTime, Nullable, Text, Uint32};
-use crate::dbms::value::Value;
 use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
 use crate::prelude::{
     Filter, ForeignFetcher, InsertRecord, Query, QueryError, TableRecord, TableSchema, UpdateRecord,
 };
 use crate::tests::{User, UserRecord, self_reference_values};
-use crate::{IcDbmsError, IcDbmsResult};
 
 /// A simple message struct for testing purposes.
 #[derive(Debug, Encode, Clone, PartialEq, Eq)]
@@ -56,11 +56,11 @@ pub struct MessageForeignFetcher;
 impl ForeignFetcher for MessageForeignFetcher {
     fn fetch(
         &self,
-        database: &crate::prelude::Database,
+        database: &impl Database,
         table: &'static str,
         local_column: &'static str,
         pk_value: Value,
-    ) -> crate::IcDbmsResult<TableColumns> {
+    ) -> ic_dbms_api::prelude::IcDbmsResult<TableColumns> {
         if table != User::table_name() {
             return Err(IcDbmsError::Query(QueryError::InvalidQuery(format!(
                 "ForeignFetcher: unknown table '{table}' for {table_name} foreign fetcher",

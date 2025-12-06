@@ -22,9 +22,7 @@ readme = "../README.md"
 
 [dependencies]
 candid = { workspace = true }
-getrandom = { workspace = true }
 ic-cdk = { workspace = true }
-ic-cdk-macros = { workspace = true }
 ic-dbms-macros = { version = "0.0", path = "../ic-dbms-macros" }
 like = { workspace = true }
 rust_decimal = { workspace = true }

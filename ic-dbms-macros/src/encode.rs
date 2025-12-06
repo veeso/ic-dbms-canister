@@ -24,8 +24,8 @@ pub fn encode(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote::quote! {
-        impl #impl_generics ::ic_dbms_canister::prelude::Encode for #ident #ty_generics #where_clause {
-            const SIZE: ::ic_dbms_canister::prelude::DataSize = #data_size;
+        impl #impl_generics ::ic_dbms_api::prelude::Encode for #ident #ty_generics #where_clause {
+            const SIZE: ::ic_dbms_api::prelude::DataSize = #data_size;
 
             #size
 
@@ -43,7 +43,7 @@ fn impl_size_const(struct_data: &DataStruct) -> TokenStream2 {
         let items = struct_data.fields.iter().map(|field| {
             let field_ty = &field.ty;
             quote::quote! {
-                <#field_ty as ::ic_dbms_canister::prelude::Encode>::SIZE
+                <#field_ty as ::ic_dbms_api::prelude::Encode>::SIZE
             }
         });
         quote::quote! { #(#items),* }
@@ -55,11 +55,11 @@ fn impl_size_const(struct_data: &DataStruct) -> TokenStream2 {
 
     // extract sizes from fields
     quote::quote! {
-        if let (#(::ic_dbms_canister::prelude::DataSize::Fixed(#anon_idents)),*) = (#tuple_expansion) {
+        if let (#(::ic_dbms_api::prelude::DataSize::Fixed(#anon_idents)),*) = (#tuple_expansion) {
             let total_size = #(#anon_idents)+*;
-            ::ic_dbms_canister::prelude::DataSize::Fixed(total_size)
+            ::ic_dbms_api::prelude::DataSize::Fixed(total_size)
         } else {
-            ::ic_dbms_canister::prelude::DataSize::Dynamic
+            ::ic_dbms_api::prelude::DataSize::Dynamic
         }
     }
 }
@@ -71,12 +71,12 @@ fn impl_size(struct_data: &DataStruct) -> TokenStream2 {
         let field_ty = &field.ty;
 
         quote::quote! {
-            <#field_ty as ::ic_dbms_canister::prelude::Encode>::size(&self.#field_name)
+            <#field_ty as ::ic_dbms_api::prelude::Encode>::size(&self.#field_name)
         }
     });
 
     quote::quote! {
-        fn size(&self) -> ::ic_dbms_canister::prelude::MSize {
+        fn size(&self) -> ::ic_dbms_api::prelude::MSize {
             0 #( + #items )*
         }
     }
@@ -90,7 +90,7 @@ fn impl_encode(struct_data: &DataStruct) -> TokenStream2 {
         let field_name = &field.ident;
 
         quote::quote! {
-            encoded.extend_from_slice(&<#field_ty as ::ic_dbms_canister::prelude::Encode>::encode(&self.#field_name));
+            encoded.extend_from_slice(&<#field_ty as ::ic_dbms_api::prelude::Encode>::encode(&self.#field_name));
         }
     });
 
@@ -110,7 +110,7 @@ fn impl_decode(struct_data: &DataStruct) -> TokenStream2 {
         let field_ty = &field.ty;
 
         quote::quote! {
-            let #field_name = <#field_ty as ::ic_dbms_canister::prelude::Encode>::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
+            let #field_name = <#field_ty as ::ic_dbms_api::prelude::Encode>::decode(std::borrow::Cow::Borrowed(&data[offset..]))?;
             offset += #field_name.size() as usize;
         }
     });
@@ -122,7 +122,7 @@ fn impl_decode(struct_data: &DataStruct) -> TokenStream2 {
         .collect::<Vec<_>>();
 
     quote::quote! {
-        fn decode(data: std::borrow::Cow<[u8]>) -> ::ic_dbms_canister::prelude::MemoryResult<Self> {
+        fn decode(data: std::borrow::Cow<[u8]>) -> ::ic_dbms_api::prelude::MemoryResult<Self> {
             let mut offset = 0;
             #(#decodings)*
 

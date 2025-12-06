@@ -1,17 +1,15 @@
 //! Memory module provides stable memory management for the IC DBMS Canister.
 
 mod acl;
-mod encode;
-mod error;
 mod provider;
 mod schema_registry;
 mod table_registry;
 
 use std::cell::RefCell;
 
+use ic_dbms_api::prelude::{DataSize, Encode, MSize, MemoryError, MemoryResult, Page, PageOffset};
+
 pub use self::acl::{ACL, AccessControlList};
-pub use self::encode::{DataSize, Encode};
-pub use self::error::{DecodeError, MemoryError};
 use self::provider::MemoryProvider;
 pub use self::schema_registry::{SCHEMA_REGISTRY, SchemaRegistry, TableRegistryPage};
 pub use self::table_registry::{NextRecord, TableReader, TableRegistry};
@@ -28,16 +26,6 @@ thread_local! {
         provider::HeapMemoryProvider::default()
     ));
 }
-
-/// Type identifying a memory page number.
-pub type Page = u32;
-/// Type identifying an offset within a memory page.
-pub type PageOffset = u16;
-/// Size type for memory operations.
-pub type MSize = u16;
-
-/// The result type for memory operations.
-pub type MemoryResult<T> = Result<T, MemoryError>;
 
 /// Schema page
 const SCHEMA_PAGE: Page = 0;

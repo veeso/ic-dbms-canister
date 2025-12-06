@@ -3,7 +3,6 @@
 mod builder;
 mod delete;
 mod filter;
-mod table_ops;
 
 use std::marker::PhantomData;
 
@@ -12,7 +11,6 @@ use thiserror::Error;
 pub use self::builder::QueryBuilder;
 pub use self::delete::DeleteBehavior;
 pub use self::filter::Filter;
-pub use self::table_ops::TableOps;
 use crate::dbms::table::TableSchema;
 use crate::dbms::value::Value;
 use crate::memory::MemoryError;
@@ -111,15 +109,15 @@ where
     /// Fields to select in the query.
     columns: Select,
     /// Relations to eagerly load with the main records.
-    pub(crate) eager_relations: Vec<&'static str>,
+    pub eager_relations: Vec<&'static str>,
     /// [`Filter`] to apply to the query.
-    pub(crate) filter: Option<Filter>,
+    pub filter: Option<Filter>,
     /// Order by clauses for sorting the results.
-    pub(crate) order_by: Vec<(&'static str, OrderDirection)>,
+    pub order_by: Vec<(&'static str, OrderDirection)>,
     /// Limit on the number of records to return.
-    pub(crate) limit: Option<usize>,
+    pub limit: Option<usize>,
     /// Offset for pagination.
-    pub(crate) offset: Option<usize>,
+    pub offset: Option<usize>,
     /// Marker for the table schema type.
     _marker: PhantomData<T>,
 }

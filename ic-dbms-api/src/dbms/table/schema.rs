@@ -1,6 +1,6 @@
 use std::hash::{Hash as _, Hasher as _};
 
-use crate::dbms::ForeignFetcher;
+use crate::dbms::foreign_fetcher::ForeignFetcher;
 use crate::dbms::table::column_def::ColumnDef;
 use crate::dbms::table::{InsertRecord, TableRecord, UpdateRecord};
 use crate::memory::Encode;

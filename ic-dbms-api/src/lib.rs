@@ -15,4 +15,12 @@
     html_logo_url = "https://raw.githubusercontent.com/veeso/ic-dbms-canister/main/assets/images/cargo/logo-512.png"
 )]
 
+// makes the crate accessible as `ic_dbms_api` in macros
+extern crate self as ic_dbms_api;
+
+mod dbms;
+mod error;
+mod memory;
 pub mod prelude;
+#[cfg(test)]
+mod tests;

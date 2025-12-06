@@ -1,7 +1,6 @@
-use crate::IcDbmsResult;
-use crate::dbms::table::ColumnDef;
+use ic_dbms_api::prelude::{ColumnDef, IcDbmsResult, Value};
+
 use crate::dbms::transaction::overlay::table::TableOverlay;
-use crate::dbms::value::Value;
 use crate::memory::TableReader;
 use crate::prelude::TableSchema;
 
@@ -73,8 +72,9 @@ where
 #[cfg(test)]
 mod tests {
 
+    use ic_dbms_api::prelude::DataTypeKind;
+
     use super::*;
-    use crate::dbms::types::DataTypeKind;
     use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
     use crate::tests::{USERS_FIXTURES, User, load_fixtures};
 

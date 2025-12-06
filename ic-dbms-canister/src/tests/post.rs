@@ -1,15 +1,13 @@
 //! Post mock type; 1 user has many posts.
 
+use ic_dbms_api::prelude::{
+    ColumnDef, DataTypeKind, Database, Filter, ForeignFetcher, ForeignKeyDef, IcDbmsError,
+    InsertRecord, Query, QueryError, TableColumns, TableRecord, TableSchema, Text, Uint32,
+    UpdateRecord, Value, ValuesSource,
+};
 use ic_dbms_macros::Encode;
 
-use crate::IcDbmsError;
-use crate::dbms::table::{
-    ColumnDef, ForeignKeyDef, TableColumns, TableRecord, TableSchema, ValuesSource,
-};
-use crate::dbms::types::{DataTypeKind, Text, Uint32};
-use crate::dbms::value::Value;
 use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{Filter, ForeignFetcher, InsertRecord, Query, QueryError, UpdateRecord};
 use crate::tests::{User, UserRecord, self_reference_values};
 
 /// A simple post struct for testing purposes.
@@ -55,11 +53,11 @@ pub struct PostForeignFetcher;
 impl ForeignFetcher for PostForeignFetcher {
     fn fetch(
         &self,
-        database: &crate::prelude::Database,
+        database: &impl Database,
         table: &'static str,
         local_column: &'static str,
         pk_value: Value,
-    ) -> crate::IcDbmsResult<TableColumns> {
+    ) -> ic_dbms_api::prelude::IcDbmsResult<TableColumns> {
         if table != User::table_name() {
             return Err(IcDbmsError::Query(QueryError::InvalidQuery(format!(
                 "ForeignFetcher: unknown table '{table}' for {table_name} foreign fetcher",
@@ -242,7 +240,7 @@ impl InsertRecord for PostInsertRequest {
     type Record = PostRecord;
     type Schema = Post;
 
-    fn from_values(values: &[(ColumnDef, Value)]) -> crate::IcDbmsResult<Self> {
+    fn from_values(values: &[(ColumnDef, Value)]) -> ic_dbms_api::prelude::IcDbmsResult<Self> {
         let mut id: Option<Uint32> = None;
         let mut title: Option<Text> = None;
         let mut content: Option<Text> = None;

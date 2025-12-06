@@ -2,13 +2,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use candid::{Nat, Principal};
+use ic_dbms_api::prelude::{IcDbmsError, IcDbmsResult, TransactionId};
 
 use super::Transaction;
 use crate::prelude::QueryError;
-use crate::{IcDbmsError, IcDbmsResult};
-
-/// Type alias for Transaction ID
-pub type TransactionId = Nat;
 
 thread_local! {
     pub static TRANSACTION_SESSION: RefCell<TransactionSession> = RefCell::new(TransactionSession::default());

@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::dbms::table::{TableFingerprint, TableSchema};
+use ic_dbms_api::prelude::{TableFingerprint, TableSchema};
+
 use crate::memory::{DataSize, Encode, MEMORY_MANAGER, MSize, MemoryError, MemoryResult, Page};
 
 thread_local! {
@@ -132,9 +133,9 @@ impl Encode for SchemaRegistry {
 #[cfg(test)]
 mod tests {
 
+    use ic_dbms_api::prelude::{ColumnDef, IcDbmsResult, TableColumns, TableRecord};
+
     use super::*;
-    use crate::IcDbmsResult;
-    use crate::dbms::table::{ColumnDef, TableColumns, TableRecord};
     use crate::prelude::{InsertRecord, NoForeignFetcher, UpdateRecord};
     use crate::tests::User;
 
@@ -234,7 +235,7 @@ mod tests {
             AnotherTableRecord
         }
 
-        fn to_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+        fn to_values(&self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
             vec![]
         }
     }
@@ -246,11 +247,11 @@ mod tests {
         type Record = AnotherTableRecord;
         type Schema = AnotherTable;
 
-        fn from_values(_values: &[(ColumnDef, crate::dbms::value::Value)]) -> IcDbmsResult<Self> {
+        fn from_values(_values: &[(ColumnDef, ic_dbms_api::prelude::Value)]) -> IcDbmsResult<Self> {
             Ok(AnotherTableInsert)
         }
 
-        fn into_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+        fn into_values(self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
             vec![]
         }
 
@@ -266,13 +267,13 @@ mod tests {
         type Schema = AnotherTable;
 
         fn from_values(
-            _values: &[(ColumnDef, crate::dbms::value::Value)],
+            _values: &[(ColumnDef, ic_dbms_api::prelude::Value)],
             _where_clause: Option<crate::prelude::Filter>,
         ) -> Self {
             AnotherTableUpdate
         }
 
-        fn update_values(&self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+        fn update_values(&self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
             vec![]
         }
 
@@ -291,7 +292,7 @@ mod tests {
             "another_table"
         }
 
-        fn columns() -> &'static [crate::dbms::table::ColumnDef] {
+        fn columns() -> &'static [ic_dbms_api::prelude::ColumnDef] {
             &[]
         }
 
@@ -299,7 +300,7 @@ mod tests {
             ""
         }
 
-        fn to_values(self) -> Vec<(ColumnDef, crate::dbms::value::Value)> {
+        fn to_values(self) -> Vec<(ColumnDef, ic_dbms_api::prelude::Value)> {
             vec![]
         }
     }

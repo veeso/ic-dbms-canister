@@ -1,26 +1,19 @@
 //! This module exposes all the types related to the DBMS engine.
 
-pub mod foreign_fetcher;
 pub mod integrity;
-pub mod query;
 pub mod schema;
-pub mod table;
 pub mod transaction;
-pub mod types;
-pub mod value;
 
-use self::foreign_fetcher::ForeignFetcher;
-use crate::dbms::query::DeleteBehavior;
-use crate::dbms::table::{ColumnDef, TableColumns, TableRecord, ValuesSource};
-use crate::dbms::transaction::{DatabaseOverlay, Transaction, TransactionId, TransactionOp};
-use crate::dbms::value::Value;
-use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
-use crate::prelude::{
-    DatabaseSchema, Filter, InsertRecord, Query, QueryError, TRANSACTION_SESSION, TableError,
-    TableSchema, TransactionError, UpdateRecord,
+use ic_dbms_api::prelude::{
+    ColumnDef, Database, DeleteBehavior, Filter, ForeignFetcher, IcDbmsError, IcDbmsResult,
+    InsertRecord, Query, QueryError, TableColumns, TableError, TableRecord, TableSchema,
+    TransactionError, TransactionId, UpdateRecord, Value, ValuesSource,
 };
+
+use crate::dbms::transaction::{DatabaseOverlay, Transaction, TransactionOp};
+use crate::memory::{SCHEMA_REGISTRY, TableRegistry};
+use crate::prelude::{DatabaseSchema, TRANSACTION_SESSION};
 use crate::utils::trap;
-use crate::{IcDbmsError, IcDbmsResult};
 
 /// Default capacity limit for SELECT queries.
 const DEFAULT_SELECT_LIMIT: usize = 128;
@@ -43,14 +36,14 @@ const DEFAULT_SELECT_LIMIT: usize = 128;
 /// or within a transaction context with [`Database::from_transaction`].
 ///
 /// If a transaction is active, all operations will be part of that transaction until it is committed or rolled back.
-pub struct Database {
+pub struct IcDbmsDatabase {
     /// Database schema to perform generic operations, without knowing the concrete table schema at compile time.
     schema: Box<dyn DatabaseSchema>,
     /// Id of the loaded transaction, if any.
     transaction: Option<TransactionId>,
 }
 
-impl Database {
+impl IcDbmsDatabase {
     /// Load an instance of the [`Database`] for one-shot operations (no transaction).
     pub fn oneshot(schema: impl DatabaseSchema + 'static) -> Self {
         Self {
@@ -68,296 +61,6 @@ impl Database {
             schema: Box::new(schema),
             transaction: Some(transaction_id),
         }
-    }
-
-    /// Executes a SELECT query and returns the results.
-    ///
-    /// # Arguments
-    ///
-    /// - `query` - The SELECT [`Query`] to be executed.
-    ///
-    /// # Returns
-    ///
-    /// The returned results are a vector of [`table::TableRecord`] matching the query.
-    pub fn select<T>(&self, query: Query<T>) -> IcDbmsResult<Vec<T::Record>>
-    where
-        T: TableSchema,
-    {
-        // load table registry
-        let table_registry = self.load_table_registry::<T>()?;
-        // read table
-        let table_reader = table_registry.read::<T>();
-        // get database overlay
-        let mut table_overlay = if self.transaction.is_some() {
-            self.overlay()?
-        } else {
-            DatabaseOverlay::default()
-        };
-        // overlay table reader
-        let mut table_reader = table_overlay.reader(table_reader);
-
-        // prepare results vector
-        let mut results = Vec::with_capacity(query.limit.unwrap_or(DEFAULT_SELECT_LIMIT));
-        // iter and select
-        let mut count = 0;
-
-        while let Some(values) = table_reader.try_next()? {
-            // check whether it matches the filter
-            if let Some(filter) = &query.filter {
-                if !self.record_matches_filter(&values, filter)? {
-                    continue;
-                }
-            }
-            // filter matched, check limit and offset
-            count += 1;
-            // check whether is before offset
-            if query.offset.is_some_and(|offset| count <= offset) {
-                continue;
-            }
-            // get queried fields
-            let values = self.select_queried_fields::<T>(values, &query)?;
-            // convert to record
-            let record = T::Record::from_values(values);
-            // push to results
-            results.push(record);
-            // check whether reached limit
-            if query.limit.is_some_and(|limit| results.len() >= limit) {
-                break;
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Executes an INSERT query.
-    ///
-    /// # Arguments
-    ///
-    /// - `record` - The INSERT record to be executed.
-    pub fn insert<T>(&self, record: T::Insert) -> IcDbmsResult<()>
-    where
-        T: TableSchema,
-        T::Insert: InsertRecord<Schema = T>,
-    {
-        // check whether the insert is valid
-        let record_values = record.clone().into_values();
-        self.schema
-            .validate_insert(self, T::table_name(), &record_values)?;
-
-        if self.transaction.is_some() {
-            // insert a new `insert` into the transaction
-            self.with_transaction_mut(|tx| tx.insert::<T>(record_values))?;
-        } else {
-            // insert directly into the database
-            let mut table_registry = self.load_table_registry::<T>()?;
-            table_registry.insert(record.into_record())?;
-        }
-
-        Ok(())
-    }
-
-    /// Executes an UPDATE query.
-    ///
-    /// # Arguments
-    ///
-    /// - `patch` - The UPDATE patch to be applied.
-    /// - `filter` - An optional [`Filter`] to specify which records to update.
-    ///
-    /// # Returns
-    ///
-    /// The number of rows updated.
-    pub fn update<T>(&self, patch: T::Update) -> IcDbmsResult<u64>
-    where
-        T: TableSchema,
-        T::Update: table::UpdateRecord<Schema = T>,
-    {
-        // get all records matching the filter
-        let query = Query::<T>::builder().filter(patch.where_clause()).build();
-        let records = self.select::<T>(query)?;
-        let count = records.len() as u64;
-
-        if self.transaction.is_some() {
-            let filter = patch.where_clause().clone();
-            let pks = self.existing_primary_keys_for_filter::<T>(filter.clone())?;
-            // insert a new `update` into the transaction
-            self.with_transaction_mut(|tx| tx.update::<T>(patch, filter, pks))?;
-
-            return Ok(count);
-        }
-
-        let patch = patch.update_values();
-        // convert updates to values
-        // for each record apply update; delete and insert
-        let res = self.atomic(|db| {
-            for record in records {
-                let mut record_values = record.to_values();
-                // apply patch
-                for (col_def, value) in &patch {
-                    if let Some((_, record_value)) = record_values
-                        .iter_mut()
-                        .find(|(record_col_def, _)| record_col_def.name == col_def.name)
-                    {
-                        *record_value = value.clone();
-                    }
-                }
-                // create insert record
-                let insert_record = T::Insert::from_values(&record_values)?;
-                // delete old record
-                let pk = record_values
-                    .iter()
-                    .find(|(col_def, _)| col_def.primary_key)
-                    .expect("primary key not found") // this can't fail.
-                    .1
-                    .clone();
-                db.delete::<T>(
-                    DeleteBehavior::Break, // we just want to delete the old record
-                    Some(Filter::eq(T::primary_key(), pk)),
-                )?;
-                // insert new record
-                db.insert::<T>(insert_record)?;
-            }
-            Ok(count)
-        });
-
-        Ok(res)
-    }
-
-    /// Executes a DELETE query.
-    ///
-    /// # Arguments
-    ///
-    /// - `behaviour` - The [`DeleteBehavior`] to apply for foreign key constraints.
-    /// - `filter` - An optional [`Filter`] to specify which records to delete.
-    ///
-    /// # Returns
-    ///
-    /// The number of rows deleted.
-    pub fn delete<T>(&self, behaviour: DeleteBehavior, filter: Option<Filter>) -> IcDbmsResult<u64>
-    where
-        T: TableSchema,
-    {
-        if self.transaction.is_some() {
-            let pks = self.existing_primary_keys_for_filter::<T>(filter.clone())?;
-            let count = pks.len() as u64;
-
-            self.with_transaction_mut(|tx| tx.delete::<T>(behaviour, filter, pks))?;
-
-            return Ok(count);
-        }
-
-        // delete must be atomic
-        let res = self.atomic(|db| {
-            // delete directly from the database
-            // select all records matching the filter
-            // read table
-            let mut table_registry = db.load_table_registry::<T>()?;
-            let mut records = vec![];
-            // iter all records
-            // FIXME: this may be huge, we should do better
-            {
-                let mut table_reader = table_registry.read::<T>();
-                while let Some(values) = table_reader.try_next()? {
-                    let record_values = values.record.clone().to_values();
-                    if let Some(filter) = &filter {
-                        if !db.record_matches_filter(&record_values, filter)? {
-                            continue;
-                        }
-                    }
-                    records.push((values, record_values));
-                }
-            }
-            // deleted records
-            let mut count = records.len() as u64;
-            for (record, record_values) in records {
-                // match delete behaviour
-                match behaviour {
-                    DeleteBehavior::Cascade => {
-                        // delete recursively foreign keys if cascade
-                        count += self.delete_foreign_keys_cascade::<T>(&record_values)?;
-                    }
-                    DeleteBehavior::Restrict => {
-                        if self.delete_foreign_keys_cascade::<T>(&record_values)? > 0 {
-                            // it's okay; we panic here because we are in an atomic closure
-                            return Err(IcDbmsError::Query(
-                                QueryError::ForeignKeyConstraintViolation {
-                                    referencing_table: T::table_name(),
-                                    field: T::primary_key(),
-                                },
-                            ));
-                        }
-                    }
-                    DeleteBehavior::Break => {
-                        // do nothing
-                    }
-                }
-                // eventually delete the record
-                table_registry.delete(record.record, record.page, record.offset)?;
-            }
-
-            Ok(count)
-        });
-
-        Ok(res)
-    }
-
-    /// Commits the current transaction.
-    ///
-    /// The transaction is consumed.
-    ///
-    /// Any error during commit will trap the canister to ensure consistency.
-    pub fn commit(&mut self) -> IcDbmsResult<()> {
-        // take transaction out of self and get the transaction out of the storage
-        // this also invalidates the overlay, so we won't have conflicts during validation
-        let Some(txid) = self.transaction.take() else {
-            return Err(IcDbmsError::Transaction(
-                TransactionError::NoActiveTransaction,
-            ));
-        };
-        let transaction = TRANSACTION_SESSION.with_borrow_mut(|ts| ts.take_transaction(&txid))?;
-
-        // iterate over operations and apply them;
-        // for each operation, first validate, then apply
-        // using `self.atomic` when applying to ensure consistency
-        for op in transaction.operations {
-            match op {
-                TransactionOp::Insert { table, values } => {
-                    // validate
-                    self.schema.validate_insert(self, table, &values)?;
-                    // insert
-                    self.atomic(|db| db.schema.insert(db, table, &values));
-                }
-                TransactionOp::Delete {
-                    table,
-                    behaviour,
-                    filter,
-                } => {
-                    self.atomic(|db| db.schema.delete(db, table, behaviour, filter));
-                }
-                TransactionOp::Update {
-                    table,
-                    patch,
-                    filter,
-                } => {
-                    self.atomic(|db| db.schema.update(db, table, &patch, filter));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Rolls back the current transaction.
-    ///
-    /// The transaction is consumed.
-    pub fn rollback(&mut self) -> IcDbmsResult<()> {
-        let Some(txid) = self.transaction.take() else {
-            return Err(IcDbmsError::Transaction(
-                TransactionError::NoActiveTransaction,
-            ));
-        };
-
-        TRANSACTION_SESSION.with_borrow_mut(|ts| ts.close_transaction(&txid));
-        Ok(())
     }
 
     /// Executes a closure with a mutable reference to the current [`Transaction`].
@@ -395,7 +98,7 @@ impl Database {
     /// If the closure returns an error, the changes are rolled back by trapping the canister.
     fn atomic<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&Database) -> IcDbmsResult<R>,
+        F: FnOnce(&IcDbmsDatabase) -> IcDbmsResult<R>,
     {
         match f(self) {
             Ok(res) => res,
@@ -550,13 +253,305 @@ impl Database {
     }
 }
 
+impl Database for IcDbmsDatabase {
+    /// Executes a SELECT query and returns the results.
+    ///
+    /// # Arguments
+    ///
+    /// - `query` - The SELECT [`Query`] to be executed.
+    ///
+    /// # Returns
+    ///
+    /// The returned results are a vector of [`table::TableRecord`] matching the query.
+    fn select<T>(&self, query: Query<T>) -> IcDbmsResult<Vec<T::Record>>
+    where
+        T: TableSchema,
+    {
+        // load table registry
+        let table_registry = self.load_table_registry::<T>()?;
+        // read table
+        let table_reader = table_registry.read::<T>();
+        // get database overlay
+        let mut table_overlay = if self.transaction.is_some() {
+            self.overlay()?
+        } else {
+            DatabaseOverlay::default()
+        };
+        // overlay table reader
+        let mut table_reader = table_overlay.reader(table_reader);
+
+        // prepare results vector
+        let mut results = Vec::with_capacity(query.limit.unwrap_or(DEFAULT_SELECT_LIMIT));
+        // iter and select
+        let mut count = 0;
+
+        while let Some(values) = table_reader.try_next()? {
+            // check whether it matches the filter
+            if let Some(filter) = &query.filter {
+                if !self.record_matches_filter(&values, filter)? {
+                    continue;
+                }
+            }
+            // filter matched, check limit and offset
+            count += 1;
+            // check whether is before offset
+            if query.offset.is_some_and(|offset| count <= offset) {
+                continue;
+            }
+            // get queried fields
+            let values = self.select_queried_fields::<T>(values, &query)?;
+            // convert to record
+            let record = T::Record::from_values(values);
+            // push to results
+            results.push(record);
+            // check whether reached limit
+            if query.limit.is_some_and(|limit| results.len() >= limit) {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Executes an INSERT query.
+    ///
+    /// # Arguments
+    ///
+    /// - `record` - The INSERT record to be executed.
+    fn insert<T>(&self, record: T::Insert) -> IcDbmsResult<()>
+    where
+        T: TableSchema,
+        T::Insert: InsertRecord<Schema = T>,
+    {
+        // check whether the insert is valid
+        let record_values = record.clone().into_values();
+        self.schema
+            .validate_insert(self, T::table_name(), &record_values)?;
+
+        if self.transaction.is_some() {
+            // insert a new `insert` into the transaction
+            self.with_transaction_mut(|tx| tx.insert::<T>(record_values))?;
+        } else {
+            // insert directly into the database
+            let mut table_registry = self.load_table_registry::<T>()?;
+            table_registry.insert(record.into_record())?;
+        }
+
+        Ok(())
+    }
+
+    /// Executes an UPDATE query.
+    ///
+    /// # Arguments
+    ///
+    /// - `patch` - The UPDATE patch to be applied.
+    /// - `filter` - An optional [`Filter`] to specify which records to update.
+    ///
+    /// # Returns
+    ///
+    /// The number of rows updated.
+    fn update<T>(&self, patch: T::Update) -> IcDbmsResult<u64>
+    where
+        T: TableSchema,
+        T::Update: UpdateRecord<Schema = T>,
+    {
+        // get all records matching the filter
+        let query = Query::<T>::builder().filter(patch.where_clause()).build();
+        let records = self.select::<T>(query)?;
+        let count = records.len() as u64;
+
+        if self.transaction.is_some() {
+            let filter = patch.where_clause().clone();
+            let pks = self.existing_primary_keys_for_filter::<T>(filter.clone())?;
+            // insert a new `update` into the transaction
+            self.with_transaction_mut(|tx| tx.update::<T>(patch, filter, pks))?;
+
+            return Ok(count);
+        }
+
+        let patch = patch.update_values();
+        // convert updates to values
+        // for each record apply update; delete and insert
+        let res = self.atomic(|db| {
+            for record in records {
+                let mut record_values = record.to_values();
+                // apply patch
+                for (col_def, value) in &patch {
+                    if let Some((_, record_value)) = record_values
+                        .iter_mut()
+                        .find(|(record_col_def, _)| record_col_def.name == col_def.name)
+                    {
+                        *record_value = value.clone();
+                    }
+                }
+                // create insert record
+                let insert_record = T::Insert::from_values(&record_values)?;
+                // delete old record
+                let pk = record_values
+                    .iter()
+                    .find(|(col_def, _)| col_def.primary_key)
+                    .expect("primary key not found") // this can't fail.
+                    .1
+                    .clone();
+                db.delete::<T>(
+                    DeleteBehavior::Break, // we just want to delete the old record
+                    Some(Filter::eq(T::primary_key(), pk)),
+                )?;
+                // insert new record
+                db.insert::<T>(insert_record)?;
+            }
+            Ok(count)
+        });
+
+        Ok(res)
+    }
+
+    /// Executes a DELETE query.
+    ///
+    /// # Arguments
+    ///
+    /// - `behaviour` - The [`DeleteBehavior`] to apply for foreign key constraints.
+    /// - `filter` - An optional [`Filter`] to specify which records to delete.
+    ///
+    /// # Returns
+    ///
+    /// The number of rows deleted.
+    fn delete<T>(&self, behaviour: DeleteBehavior, filter: Option<Filter>) -> IcDbmsResult<u64>
+    where
+        T: TableSchema,
+    {
+        if self.transaction.is_some() {
+            let pks = self.existing_primary_keys_for_filter::<T>(filter.clone())?;
+            let count = pks.len() as u64;
+
+            self.with_transaction_mut(|tx| tx.delete::<T>(behaviour, filter, pks))?;
+
+            return Ok(count);
+        }
+
+        // delete must be atomic
+        let res = self.atomic(|db| {
+            // delete directly from the database
+            // select all records matching the filter
+            // read table
+            let mut table_registry = db.load_table_registry::<T>()?;
+            let mut records = vec![];
+            // iter all records
+            // FIXME: this may be huge, we should do better
+            {
+                let mut table_reader = table_registry.read::<T>();
+                while let Some(values) = table_reader.try_next()? {
+                    let record_values = values.record.clone().to_values();
+                    if let Some(filter) = &filter {
+                        if !db.record_matches_filter(&record_values, filter)? {
+                            continue;
+                        }
+                    }
+                    records.push((values, record_values));
+                }
+            }
+            // deleted records
+            let mut count = records.len() as u64;
+            for (record, record_values) in records {
+                // match delete behaviour
+                match behaviour {
+                    DeleteBehavior::Cascade => {
+                        // delete recursively foreign keys if cascade
+                        count += self.delete_foreign_keys_cascade::<T>(&record_values)?;
+                    }
+                    DeleteBehavior::Restrict => {
+                        if self.delete_foreign_keys_cascade::<T>(&record_values)? > 0 {
+                            // it's okay; we panic here because we are in an atomic closure
+                            return Err(IcDbmsError::Query(
+                                QueryError::ForeignKeyConstraintViolation {
+                                    referencing_table: T::table_name(),
+                                    field: T::primary_key(),
+                                },
+                            ));
+                        }
+                    }
+                    DeleteBehavior::Break => {
+                        // do nothing
+                    }
+                }
+                // eventually delete the record
+                table_registry.delete(record.record, record.page, record.offset)?;
+            }
+
+            Ok(count)
+        });
+
+        Ok(res)
+    }
+
+    /// Commits the current transaction.
+    ///
+    /// The transaction is consumed.
+    ///
+    /// Any error during commit will trap the canister to ensure consistency.
+    fn commit(&mut self) -> IcDbmsResult<()> {
+        // take transaction out of self and get the transaction out of the storage
+        // this also invalidates the overlay, so we won't have conflicts during validation
+        let Some(txid) = self.transaction.take() else {
+            return Err(IcDbmsError::Transaction(
+                TransactionError::NoActiveTransaction,
+            ));
+        };
+        let transaction = TRANSACTION_SESSION.with_borrow_mut(|ts| ts.take_transaction(&txid))?;
+
+        // iterate over operations and apply them;
+        // for each operation, first validate, then apply
+        // using `self.atomic` when applying to ensure consistency
+        for op in transaction.operations {
+            match op {
+                TransactionOp::Insert { table, values } => {
+                    // validate
+                    self.schema.validate_insert(self, table, &values)?;
+                    // insert
+                    self.atomic(|db| db.schema.insert(db, table, &values));
+                }
+                TransactionOp::Delete {
+                    table,
+                    behaviour,
+                    filter,
+                } => {
+                    self.atomic(|db| db.schema.delete(db, table, behaviour, filter));
+                }
+                TransactionOp::Update {
+                    table,
+                    patch,
+                    filter,
+                } => {
+                    self.atomic(|db| db.schema.update(db, table, &patch, filter));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Rolls back the current transaction.
+    ///
+    /// The transaction is consumed.
+    fn rollback(&mut self) -> IcDbmsResult<()> {
+        let Some(txid) = self.transaction.take() else {
+            return Err(IcDbmsError::Transaction(
+                TransactionError::NoActiveTransaction,
+            ));
+        };
+
+        TRANSACTION_SESSION.with_borrow_mut(|ts| ts.close_transaction(&txid));
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
     use candid::{Nat, Principal};
+    use ic_dbms_api::prelude::{Text, Uint32};
 
     use super::*;
-    use crate::dbms::types::{Text, Uint32};
     use crate::tests::{
         Message, POSTS_FIXTURES, Post, TestDatabaseSchema, USERS_FIXTURES, User, UserInsertRequest,
         UserUpdateRequest, load_fixtures,
@@ -564,17 +559,17 @@ mod tests {
 
     #[test]
     fn test_should_init_dbms() {
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         assert!(dbms.transaction.is_none());
 
-        let tx_dbms = Database::from_transaction(TestDatabaseSchema, Nat::from(1u64));
+        let tx_dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, Nat::from(1u64));
         assert!(tx_dbms.transaction.is_some());
     }
 
     #[test]
     fn test_should_select_all_users() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder().all().build();
         let users = dbms.select(query).expect("failed to select users");
 
@@ -605,7 +600,7 @@ mod tests {
                     (
                         ColumnDef {
                             name: "id",
-                            data_type: types::DataTypeKind::Uint32,
+                            data_type: ic_dbms_api::prelude::DataTypeKind::Uint32,
                             nullable: false,
                             primary_key: true,
                             foreign_key: None,
@@ -615,7 +610,7 @@ mod tests {
                     (
                         ColumnDef {
                             name: "name",
-                            data_type: types::DataTypeKind::Text,
+                            data_type: ic_dbms_api::prelude::DataTypeKind::Text,
                             nullable: false,
                             primary_key: false,
                             foreign_key: None,
@@ -627,7 +622,7 @@ mod tests {
         });
 
         // select by pk
-        let dbms = Database::from_transaction(TestDatabaseSchema, transaction_id);
+        let dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, transaction_id);
         let query = Query::<User>::builder()
             .and_where(Filter::eq("id", Value::Uint32(999.into())))
             .build();
@@ -645,7 +640,7 @@ mod tests {
     #[test]
     fn test_should_select_users_with_offset_and_limit() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder().offset(2).limit(3).build();
         let users = dbms.select(query).expect("failed to select users");
 
@@ -664,7 +659,7 @@ mod tests {
     #[test]
     fn test_should_select_users_with_offset_and_filter() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder()
             .offset(1)
             .and_where(Filter::gt("id", Value::Uint32(4.into())))
@@ -686,7 +681,7 @@ mod tests {
     #[test]
     fn test_should_select_post_with_relation() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<Post>::builder()
             .all()
             .with(User::table_name())
@@ -719,7 +714,7 @@ mod tests {
 
     #[test]
     fn test_should_fail_loading_unexisting_column_on_select() {
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder().field("unexisting_column").build();
         let result = dbms.select(query);
         assert!(result.is_err());
@@ -727,7 +722,7 @@ mod tests {
 
     #[test]
     fn test_should_select_queried_fields() {
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let record_values = User::columns()
             .iter()
@@ -756,7 +751,7 @@ mod tests {
     #[test]
     fn test_should_select_queried_fields_with_relations() {
         load_fixtures();
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let record_values = Post::columns()
             .iter()
@@ -824,7 +819,7 @@ mod tests {
             .with("users")
             .build();
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let messages = dbms.select(query).expect("failed to select messages");
         assert_eq!(messages.len(), 1);
         let message = &messages[0];
@@ -855,7 +850,7 @@ mod tests {
 
     #[test]
     fn test_should_fail_loading_unexisting_relation() {
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let record_values = Post::columns()
             .iter()
@@ -878,7 +873,7 @@ mod tests {
 
     #[test]
     fn test_should_get_whether_record_matches_filter() {
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
 
         let record_values = User::columns()
             .iter()
@@ -906,7 +901,7 @@ mod tests {
     fn test_should_load_table_registry() {
         init_user_table();
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let table_registry = dbms.load_table_registry::<User>();
         assert!(table_registry.is_ok());
     }
@@ -915,7 +910,7 @@ mod tests {
     fn test_should_insert_record_without_transaction() {
         load_fixtures();
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let new_user = UserInsertRequest {
             id: Uint32(100u32),
             name: Text("NewUser".to_string()),
@@ -942,7 +937,7 @@ mod tests {
     fn test_should_validate_user_insert_conflict() {
         load_fixtures();
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let new_user = UserInsertRequest {
             id: Uint32(1u32),
             name: Text("NewUser".to_string()),
@@ -959,7 +954,7 @@ mod tests {
         // create a transaction
         let transaction_id =
             TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
-        let mut dbms = Database::from_transaction(TestDatabaseSchema, transaction_id.clone());
+        let mut dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, transaction_id.clone());
 
         let new_user = UserInsertRequest {
             id: Uint32(200u32),
@@ -970,7 +965,7 @@ mod tests {
         assert!(result.is_ok());
 
         // user should not be visible outside the transaction
-        let oneshot_dbms = Database::oneshot(TestDatabaseSchema);
+        let oneshot_dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder()
             .and_where(Filter::eq("id", Value::Uint32(200u32.into())))
             .build();
@@ -1008,7 +1003,7 @@ mod tests {
         // create a transaction
         let transaction_id =
             TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
-        let mut dbms = Database::from_transaction(TestDatabaseSchema, transaction_id.clone());
+        let mut dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, transaction_id.clone());
         let new_user = UserInsertRequest {
             id: Uint32(300u32),
             name: Text("RollbackUser".to_string()),
@@ -1021,7 +1016,7 @@ mod tests {
         assert!(rollback_result.is_ok());
 
         // user should not be visible
-        let oneshot_dbms = Database::oneshot(TestDatabaseSchema);
+        let oneshot_dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder()
             .and_where(Filter::eq("id", Value::Uint32(300u32.into())))
             .build();
@@ -1045,12 +1040,12 @@ mod tests {
             name: Text("DeleteUser".to_string()),
         };
         assert!(
-            Database::oneshot(TestDatabaseSchema)
+            IcDbmsDatabase::oneshot(TestDatabaseSchema)
                 .insert::<User>(new_user)
                 .is_ok()
         );
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder()
             .and_where(Filter::eq("id", Value::Uint32(100u32.into())))
             .build();
@@ -1073,7 +1068,7 @@ mod tests {
         load_fixtures();
 
         // user 1 has post and messages for sure.
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         dbms.delete::<User>(
             DeleteBehavior::Restrict,
             Some(Filter::eq("id", Value::Uint32(1u32.into()))),
@@ -1086,7 +1081,7 @@ mod tests {
         load_fixtures();
 
         // user 1 has posts and messages for sure.
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let delete_count = dbms
             .delete::<User>(
                 DeleteBehavior::Cascade,
@@ -1127,7 +1122,7 @@ mod tests {
         // create a transaction
         let transaction_id =
             TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
-        let mut dbms = Database::from_transaction(TestDatabaseSchema, transaction_id.clone());
+        let mut dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, transaction_id.clone());
 
         let delete_count = dbms
             .delete::<User>(
@@ -1138,7 +1133,7 @@ mod tests {
         assert!(delete_count > 0);
 
         // user should not be visible outside the transaction
-        let oneshot_dbms = Database::oneshot(TestDatabaseSchema);
+        let oneshot_dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder()
             .and_where(Filter::eq("id", Value::Uint32(2u32.into())))
             .build();
@@ -1185,7 +1180,7 @@ mod tests {
     fn test_should_update_one_shot() {
         load_fixtures();
 
-        let dbms = Database::oneshot(TestDatabaseSchema);
+        let dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let filter = Filter::eq("id", Value::Uint32(3u32.into()));
 
         let patch = UserUpdateRequest {
@@ -1216,7 +1211,7 @@ mod tests {
         // create a transaction
         let transaction_id =
             TRANSACTION_SESSION.with_borrow_mut(|ts| ts.begin_transaction(Principal::anonymous()));
-        let mut dbms = Database::from_transaction(TestDatabaseSchema, transaction_id.clone());
+        let mut dbms = IcDbmsDatabase::from_transaction(TestDatabaseSchema, transaction_id.clone());
 
         let filter = Filter::eq("id", Value::Uint32(4u32.into()));
         let patch = UserUpdateRequest {
@@ -1229,7 +1224,7 @@ mod tests {
         assert_eq!(update_count, 1);
 
         // user should not be visible outside the transaction
-        let oneshot_dbms = Database::oneshot(TestDatabaseSchema);
+        let oneshot_dbms = IcDbmsDatabase::oneshot(TestDatabaseSchema);
         let query = Query::<User>::builder().and_where(filter.clone()).build();
         let users = oneshot_dbms
             .select(query.clone())

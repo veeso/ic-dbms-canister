@@ -3,13 +3,12 @@ mod table;
 
 use std::collections::HashMap;
 
+use ic_dbms_api::prelude::{ColumnDef, IcDbmsError, IcDbmsResult, TableName, Value};
+
 pub use self::reader::DatabaseOverlayReader;
 use self::table::TableOverlay;
-use crate::dbms::table::{ColumnDef, TableName};
-use crate::dbms::value::Value;
 use crate::memory::TableReader;
 use crate::prelude::{QueryError, TableSchema};
-use crate::{IcDbmsError, IcDbmsResult};
 
 /// The database overlay is used to manage uncommitted changes during a transaction.
 ///
@@ -80,8 +79,9 @@ impl DatabaseOverlay {
 #[cfg(test)]
 mod tests {
 
+    use ic_dbms_api::prelude::DataTypeKind;
+
     use super::*;
-    use crate::dbms::types::DataTypeKind;
     use crate::tests::User;
 
     #[test]

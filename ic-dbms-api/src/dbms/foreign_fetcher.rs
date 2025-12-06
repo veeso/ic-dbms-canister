@@ -1,7 +1,6 @@
-use crate::IcDbmsResult;
-use crate::dbms::Database;
 use crate::dbms::table::TableColumns;
 use crate::dbms::value::Value;
+use crate::prelude::{Database, IcDbmsResult};
 
 /// This trait defines the behavior of a foreign fetcher, which is responsible for
 /// fetching data from foreign sources or databases.
@@ -21,7 +20,7 @@ pub trait ForeignFetcher: Default {
     /// A result containing the fetched table columns or an error.
     fn fetch(
         &self,
-        database: &Database,
+        database: &impl Database,
         table: &'static str,
         local_column: &'static str,
         pk_value: Value,
@@ -35,7 +34,7 @@ pub struct NoForeignFetcher;
 impl ForeignFetcher for NoForeignFetcher {
     fn fetch(
         &self,
-        _database: &Database,
+        _database: &impl Database,
         _table: &'static str,
         _local_column: &'static str,
         _pk_value: Value,
