@@ -13,7 +13,8 @@ pub trait ForeignFetcher: Default {
     ///
     /// * `database` - The database from which to fetch the data.
     /// * `table` - The name of the table to fetch data from.
-    /// * `pk_values` - The primary key to look for.
+    /// * `local_column` - The local column that references the foreign key.
+    /// * `pk_value` - The primary key to look for.
     ///
     /// # Returns
     ///
@@ -40,5 +41,68 @@ impl ForeignFetcher for NoForeignFetcher {
         _pk_value: Value,
     ) -> IcDbmsResult<TableColumns> {
         unimplemented!("NoForeignFetcher should have a table without foreign keys");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "NoForeignFetcher should have a table without foreign keys")]
+    fn test_no_foreign_fetcher() {
+        let fetcher = NoForeignFetcher;
+        let _ = fetcher.fetch(
+            &MockDatabase,
+            "some_table",
+            "some_column",
+            Value::Uint32(1.into()),
+        );
+    }
+
+    struct MockDatabase;
+
+    impl Database for MockDatabase {
+        fn select<T>(&self, _query: crate::prelude::Query<T>) -> IcDbmsResult<Vec<T::Record>>
+        where
+            T: crate::prelude::TableSchema,
+        {
+            unimplemented!()
+        }
+
+        fn insert<T>(&self, _record: T::Insert) -> IcDbmsResult<()>
+        where
+            T: crate::prelude::TableSchema,
+            T::Insert: crate::prelude::InsertRecord<Schema = T>,
+        {
+            unimplemented!()
+        }
+
+        fn update<T>(&self, _patch: T::Update) -> IcDbmsResult<u64>
+        where
+            T: crate::prelude::TableSchema,
+            T::Update: crate::prelude::UpdateRecord<Schema = T>,
+        {
+            unimplemented!()
+        }
+
+        fn delete<T>(
+            &self,
+            _behaviour: crate::prelude::DeleteBehavior,
+            _filter: Option<crate::prelude::Filter>,
+        ) -> IcDbmsResult<u64>
+        where
+            T: crate::prelude::TableSchema,
+        {
+            unimplemented!()
+        }
+
+        fn commit(&mut self) -> IcDbmsResult<()> {
+            unimplemented!()
+        }
+
+        fn rollback(&mut self) -> IcDbmsResult<()> {
+            unimplemented!()
+        }
     }
 }
