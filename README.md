@@ -62,6 +62,19 @@ The canister API will be automatically generated based on the defined tables, wi
 
 todo...
 
+## Interacting with the Canister
+
+To interact with a `ic-dbms-canister`, you first of all need to import `ic-dbms-api` in your project:
+
+```toml
+[dependencies]
+ic-dbms-api = "0.1"
+```
+
+You can find the documentation for `ic-dbms-api` at <https://docs.rs/ic-dbms-api>.
+
+todo...
+
 ## Features
 
 - [x] Define tables with common attributes
